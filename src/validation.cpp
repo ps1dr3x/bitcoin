@@ -1705,24 +1705,13 @@ uint32_t GetMaxStrippedBlockSize(const CBlockIndex* pindexPrev, const Consensus:
         return MAX_BIP141_STRIPPED_BLOCK_SIZE;
     }
 
-    // In case we activate early on regtest.
-    if (nMedianTimePast < 1483246800) {
-        return 300000;
-    }
-    // The first step is on January 1st 2017.
-    // After that, one step happens every 2^23 seconds.
-    int64_t step = (nMedianTimePast - 1483246800) >> 23;
-    // Don't do more than 107 steps, to stay under 32 MB.
-    step = std::min<int64_t>(step, 107);
+    // One step happens every 2^23 seconds starting from
+    // the MTP of the activation block
+    int64_t step = (nMedianTimePast - chainActive[VersionBitsStateSinceHeight(pindexPrev, consensusParams, Consensus::DEPLOYMENT_BLKSIZE, versionbitscache)]->GetMedianTimePast()) >> 23;
+    // Don't do more than 80 steps, to stay under 32 MB.
+    step = std::min<int64_t>(step, 80);
     // Every step is a 2^(1/16) factor.
-    static const uint32_t bases[16] = {
-        // bases[i] == round(300000 * pow(2.0, i / 16.0))
-        300000, 313282, 327152, 341637,
-        356762, 372557, 389052, 406277,
-        424264, 443048, 462663, 483147,
-        504538, 526876, 550202, 574562
-    };
-    return bases[step & 15] << (step / 16);
+    return round(1000000 * pow(2.0, step / 16.0));
 }
 
 uint32_t GetMaxBlockSize(const CBlockIndex* pindexPrev, const Consensus::Params& consensusParams, int64_t nMedianTimePast) {
