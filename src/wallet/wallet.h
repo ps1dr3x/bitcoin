@@ -971,6 +971,12 @@ public:
     static CFeeRate fallbackFee;
     static CFeeRate m_discard_rate;
 
+    /**
+     * Return the minimum required fee taking into account the
+     * floating relay fee and user set minimum transaction fee
+     */
+    static CFeeRate GetRequiredFeeRate();
+
     bool NewKeyPool();
     size_t KeypoolCountExternalKeys();
     bool TopUpKeyPool(unsigned int kpSize = 0);

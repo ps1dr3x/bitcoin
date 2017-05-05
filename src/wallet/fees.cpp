@@ -76,6 +76,22 @@ CAmount GetMinimumFee(unsigned int nTxBytes, const CCoinControl& coin_control, c
     return fee_needed;
 }
 
+CFeeRate CWallet::GetMinimumFeeRate(unsigned int nConfirmTarget, const CTxMemPool& pool, const CBlockPolicyEstimator& estimator, bool ignoreUserSetFee)
+{
+    CFeeRate nFeeRateNeeded = payTxFee;
+    // payTxFee is the user-set global for desired feerate
+    // User didn't set: use -txconfirmtarget to estimate...
+    if (nFeeRateNeeded == CFeeRate(0) || ignoreUserSetFee) {
+        int estimateFoundTarget = nConfirmTarget;
+        nFeeRateNeeded = estimator.estimateSmartFee(nConfirmTarget, &estimateFoundTarget, pool);
+        // ... unless we don't have enough mempool data for estimatefee, then use fallbackFee
+        if (nFeeRateNeeded == CFeeRate(0))
+            nFeeRateNeeded = fallbackFee;
+    }
+    // prevent user from paying a fee below minRelayTxFee or minTxFee
+    nFeeRateNeeded = std::max(nFeeRateNeeded, GetRequiredFeeRate());
+    return nFeeRateNeeded;
+}
 
 CFeeRate GetDiscardRate(const CBlockPolicyEstimator& estimator)
 {

@@ -27,6 +27,12 @@ CAmount GetRequiredFee(unsigned int nTxBytes);
 CAmount GetMinimumFee(unsigned int nTxBytes, const CCoinControl& coin_control, const CTxMemPool& pool, const CBlockPolicyEstimator& estimator, FeeCalculation *feeCalc);
 
 /**
+ * Estimate the minimum fee rate considering user set parameters
+ * and the required fee
+ */
+static CFeeRate GetMinimumFeeRate(unsigned int nConfirmTarget, const CTxMemPool& pool, const CBlockPolicyEstimator& estimator, bool ignoreUserSetFee = false);
+
+/**
  * Return the maximum feerate for discarding change.
  */
 CFeeRate GetDiscardRate(const CBlockPolicyEstimator& estimator);
