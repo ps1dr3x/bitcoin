@@ -38,7 +38,17 @@ class SignRawTransactionsTest(BitcoinTestFramework):
 
         # 1) The transaction has a complete set of signatures
         assert 'complete' in rawTxSigned
-        assert_equal(rawTxSigned['complete'], True)
+        assert rawTxSigned['complete']
+
+        # 2) No script verification error occurred
+        assert 'errors' not in rawTxSigned
+
+        # Perform the same test on signrawtransaction
+        rawTxSigned = self.nodes[0].signrawtransaction(rawTx, inputs, privKeys)
+
+        # 1) The transaction has a complete set of signatures
+        assert 'complete' in rawTxSigned
+        assert rawTxSigned['complete']
 
         # 2) No script verification error occurred
         assert 'errors' not in rawTxSigned
@@ -89,7 +99,33 @@ class SignRawTransactionsTest(BitcoinTestFramework):
 
         # 3) The transaction has no complete set of signatures
         assert 'complete' in rawTxSigned
-        assert_equal(rawTxSigned['complete'], False)
+        assert not rawTxSigned['complete']
+
+        # 4) Two script verification errors occurred
+        assert 'errors' in rawTxSigned
+        assert_equal(len(rawTxSigned['errors']), 2)
+
+        # 5) Script verification errors have certain properties
+        assert 'txid' in rawTxSigned['errors'][0]
+        assert 'vout' in rawTxSigned['errors'][0]
+        assert 'witness' in rawTxSigned['errors'][0]
+        assert 'scriptSig' in rawTxSigned['errors'][0]
+        assert 'sequence' in rawTxSigned['errors'][0]
+        assert 'error' in rawTxSigned['errors'][0]
+
+        # 6) The verification errors refer to the invalid (vin 1) and missing input (vin 2)
+        assert_equal(rawTxSigned['errors'][0]['txid'], inputs[1]['txid'])
+        assert_equal(rawTxSigned['errors'][0]['vout'], inputs[1]['vout'])
+        assert_equal(rawTxSigned['errors'][1]['txid'], inputs[2]['txid'])
+        assert_equal(rawTxSigned['errors'][1]['vout'], inputs[2]['vout'])
+        assert not rawTxSigned['errors'][0]['witness']
+
+        # Perform same test with signrawtransaction
+        rawTxSigned = self.nodes[0].signrawtransaction(rawTx, scripts, privKeys)
+
+        # 3) The transaction has no complete set of signatures
+        assert 'complete' in rawTxSigned
+        assert not rawTxSigned['complete']
 
         # 4) Two script verification errors occurred
         assert 'errors' in rawTxSigned
@@ -117,7 +153,30 @@ class SignRawTransactionsTest(BitcoinTestFramework):
 
         # 7) The transaction has no complete set of signatures
         assert 'complete' in rawTxSigned
-        assert_equal(rawTxSigned['complete'], False)
+        assert not rawTxSigned['complete']
+
+        # 8) Two script verification errors occurred
+        assert 'errors' in rawTxSigned
+        assert_equal(len(rawTxSigned['errors']), 2)
+
+        # 9) Script verification errors have certain properties
+        assert 'txid' in rawTxSigned['errors'][0]
+        assert 'vout' in rawTxSigned['errors'][0]
+        assert 'witness' in rawTxSigned['errors'][0]
+        assert 'scriptSig' in rawTxSigned['errors'][0]
+        assert 'sequence' in rawTxSigned['errors'][0]
+        assert 'error' in rawTxSigned['errors'][0]
+
+        # Non-empty witness checked here
+        assert_equal(rawTxSigned['errors'][1]['witness'], ["304402203609e17b84f6a7d30c80bfa610b5b4542f32a8a0d5447a12fb1366d7f01cc44a0220573a954c4518331561406f90300e8f3358f51928d43c212a8caed02de67eebee01", "025476c2e83188368da1ff3e292e7acafcdb3566bb0ad253f62fc70f07aeee6357"])
+        assert not rawTxSigned['errors'][0]['witness']
+
+        # Perform same test with signrawtransaction
+        rawTxSigned = self.nodes[0].signrawtransaction(p2wpkh_raw_tx)
+
+        # 7) The transaction has no complete set of signatures
+        assert 'complete' in rawTxSigned
+        assert rawTxSigned['complete']
 
         # 8) Two script verification errors occurred
         assert 'errors' in rawTxSigned
