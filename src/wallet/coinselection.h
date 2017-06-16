@@ -8,7 +8,7 @@
 #include "amount.h"
 #include "primitives/transaction.h"
 #include "random.h"
-#include "wallet.h"
+#include "wallet/wallet.h"
 
 bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_value, const CAmount& cost_of_change, std::set<CInputCoin>& out_set, CAmount& value_ret, std::vector<CAmount>& fee_vec, CAmount& fee_ret);
 

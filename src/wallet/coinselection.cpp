@@ -3,6 +3,8 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "wallet/coinselection.h"
+#include "util.h"
+#include "utilmoneystr.h"
 
 // Descending order comparator
 struct {
@@ -22,7 +24,6 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
         return false;
     }
 
-    CAmount selected_value = 0;
     int depth = 0;
     int tries = 100000;
     std::vector<std::pair<bool, bool>> selection; // First bool: select the utxo at this index; Second bool: traversing second branch of this utxo
@@ -46,11 +47,11 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
             return false;
         } else if (value_ret > target_value + cost_of_change) { // Selected value is out of range, go back and try other branch
             backtrack = true;
-        } else if (selected_value >= target_value) { // Selected value is within range
+        } else if (value_ret >= target_value) { // Selected value is within range
             done = true;
         } else if (depth >= (int)utxo_pool.size()) { // Reached a leaf node, no solution here
             backtrack = true;
-        } else if (selected_value + remaining < target_value) { // Cannot possibly reach target with amount remaining
+        } else if (value_ret + remaining < target_value) { // Cannot possibly reach target with amount remaining
             if (depth == 0) { // At the first utxo, no possible selections, so exit
                 return false;
             } else {
@@ -105,7 +106,6 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
     }
 
     // Set output set
-    out_set.clear();
     for (unsigned int i = 0; i < selection.size(); ++i) {
         if (selection.at(i).first) {
             out_set.insert(utxo_pool.at(i));
