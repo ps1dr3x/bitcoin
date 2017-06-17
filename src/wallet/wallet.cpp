@@ -2657,7 +2657,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                     currentConfirmationTarget = coinControl->nConfirmTarget;
                 }
 
-                CFeeRate nFeeRateNeeded = GetMinimumFeeRate(currentConfirmationTarget, ::mempool, ::feeEstimator);
+                CFeeRate nFeeRateNeeded = GetMinimumFeeRate(currentConfirmationTarget, ::mempool, ::feeEstimator, &feeCalc);
 
                 if (coinControl && coinControl->fOverrideFeeRate) {
                     nFeeRateNeeded = coinControl->nFeeRate;
