@@ -2298,9 +2298,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
         CFeeRate change_feerate = GetMinimumFeeRate(1008, ::mempool, ::feeEstimator, &feeCalc);
 
         // Calculate cost of change
-        // TODO: In the future, we should use the change output actually made for the transaction and calculate the cost
-        // requred to spend it.
-        CAmount cost_of_change = effective_fee.GetFee(148+34); // 148 bytes for the input, 34 bytes for making the output
+        CAmount cost_of_change = change_feerate.GetFee(change_size);
 
         // Filter by the min conf specs and add to vValue and calculate effective value
         std::vector<CAmount> fee_vec; // To keep track of the fees for each input
