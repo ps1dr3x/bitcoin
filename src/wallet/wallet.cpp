@@ -2677,6 +2677,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                     nValueToSelect += nFeeRet;
 
                 // vouts to the payees
+                CAmount output_fees = 0;
                 for (const auto& recipient : vecSend)
                 {
                     CTxOut txout(recipient.nAmount, recipient.scriptPubKey);
