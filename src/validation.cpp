@@ -1876,9 +1876,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
         if (!tx.IsCoinBase())
         {
-            if (!view.HaveInputs(tx))
+            if (!view.HaveInputs(tx)) {
+                LogPrintf(HexStr(tx.GetHash()).c_str());
                 return state.DoS(100, error("ConnectBlock(): inputs missing/spent"),
                                  REJECT_INVALID, "bad-txns-inputs-missingorspent");
+                             }
 
             // Check that transaction is BIP68 final
             // BIP68 lock checks (as opposed to nLockTime checks) must
