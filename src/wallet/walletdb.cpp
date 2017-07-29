@@ -450,10 +450,6 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
 
             pwallet->LoadKeyMetadata(keyID, keyMeta);
         }
-        else if (strType == "defaultkey")
-        {
-            ssValue >> pwallet->vchDefaultKey;
-        }
         else if (strType == "pool")
         {
             int64_t nIndex;
@@ -520,9 +516,9 @@ bool CWalletDB::IsKeyType(const std::string& strType)
             strType == "mkey" || strType == "ckey");
 }
 
-DBErrors CWalletDB::LoadWallet(CWallet* pwallet)
+DBErrors CWalletDB::LoadWallet(CWallet* pwallet, bool &first_run_ret)
 {
-    pwallet->vchDefaultKey = CPubKey();
+    first_run_ret = false;
     CWalletScanState wss;
     bool fNoncriticalErrors = false;
     DBErrors result = DB_LOAD_OK;
@@ -623,6 +619,9 @@ DBErrors CWalletDB::LoadWallet(CWallet* pwallet)
     for (CAccountingEntry& entry : pwallet->laccentries) {
         pwallet->wtxOrdered.insert(make_pair(entry.nOrderPos, CWallet::TxPair((CWalletTx*)0, &entry)));
     }
+
+    // This wallet is on its first run if it has no keys
+    first_run_ret = wss.nKeys == 0 && wss.nCKeys == 0 && wss.nKeyMeta == 0;
 
     return result;
 }
