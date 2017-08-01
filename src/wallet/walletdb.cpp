@@ -130,11 +130,6 @@ bool CWalletDB::WriteOrderPosNext(int64_t nOrderPosNext)
     return WriteIC(std::string("orderposnext"), nOrderPosNext);
 }
 
-bool CWalletDB::WriteDefaultKey(const CPubKey& vchPubKey)
-{
-    return WriteIC(std::string("defaultkey"), vchPubKey);
-}
-
 bool CWalletDB::ReadPool(int64_t nPool, CKeyPool& keypool)
 {
     return batch.Read(std::make_pair(std::string("pool"), nPool), keypool);

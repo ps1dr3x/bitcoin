@@ -3947,17 +3947,6 @@ CWallet* CWallet::CreateWalletFromFile(const std::string walletFile)
             if (!walletInstance->SetHDMasterKey(masterPubKey))
                 throw std::runtime_error(std::string(__func__) + ": Storing master key failed");
         }
-
-        // Generate an address for the address book and to fill the keypool
-        CPubKey key;
-        if (walletInstance->GetKeyFromPool(key, false)) {
-            // Write a default key for backwards compatibility
-            if (!CWalletDB(*walletInstance->dbw).WriteDefaultKey(key) && !walletInstance->SetAddressBook(key.GetID(), "", "receive")) {
-                InitError(_("Cannot create first address") += "\n");
-                return NULL;
-            }
-        }
-
         walletInstance->SetBestChain(chainActive.GetLocator());
     }
     else if (IsArgSet("-usehd")) {
