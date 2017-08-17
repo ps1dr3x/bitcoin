@@ -676,7 +676,7 @@ private:
      * if they are not ours
      */
      // TODO: Change the hard coded change_size later when we aren't just using P2PKH change outputs
-    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount& fee_ret, const CFeeRate effective_fee, const CCoinControl *coinControl = NULL, bool use_bnb = true, int change_size = 148+34) const;
+    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount& fee_ret, const CFeeRate effective_fee, const CCoinControl& coin_control, bool use_bnb = true, int change_size = 148+34) const;
 
     CWalletDB *pwalletdbEncryption;
 
@@ -972,12 +972,6 @@ public:
     static CFeeRate minTxFee;
     static CFeeRate fallbackFee;
     static CFeeRate m_discard_rate;
-
-    /**
-     * Return the minimum required fee taking into account the
-     * floating relay fee and user set minimum transaction fee
-     */
-    static CFeeRate GetRequiredFeeRate();
 
     bool NewKeyPool();
     size_t KeypoolCountExternalKeys();

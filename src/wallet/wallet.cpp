@@ -2295,61 +2295,15 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
     if (use_bnb) {
         // Get the fee rate to use for the change fee rate
         FeeCalculation feeCalc;
-        CFeeRate change_feerate = GetMinimumFeeRate(1008, ::mempool, ::feeEstimator, &feeCalc);
+        CCoinControl temp;
+        temp.m_confirm_target = 1008;
+        CFeeRate change_feerate = GetMinimumFeeRate(temp, ::mempool, ::feeEstimator, &feeCalc);
 
         // Calculate cost of change
         CAmount cost_of_change = change_feerate.GetFee(change_size);
 
         // Filter by the min conf specs and add to vValue and calculate effective value
         std::vector<CAmount> fee_vec; // To keep track of the fees for each input
-        for (const COutput &output : vCoins)
-        {
-            if (!output.fSpendable)
-                continue;
-
-        const CWalletTx *pcoin = output.tx;
-
-        if (output.nDepth < (pcoin->IsFromMe(ISMINE_ALL) ? nConfMine : nConfTheirs))
-            continue;
-
-        if (!mempool.TransactionWithinChainLimit(pcoin->GetHash(), nMaxAncestors))
-            continue;
-
-            int i = output.i;
-            CInputCoin coin(pcoin, i);
-            coin.txout.nValue -= (output.nInputBytes < 0 ? 0 : effective_fee.GetFee(output.nInputBytes));
-            // Only include outputs that are not negative effective value (i.e. not dust)
-            if (coin.txout.nValue > 0) {
-                vValue.push_back(coin);
-                fee_vec.push_back(output.nInputBytes < 0 ? 0 : effective_fee.GetFee(output.nInputBytes));
-            }
-        }
-        return SelectCoinsBnB(vValue, nTargetValue, cost_of_change, setCoinsRet, nValueRet, fee_vec, fee_ret);
-    } else {
-        // Filter by the min conf specs and add to vValue
-        for (const COutput &output : vCoins)
-        {
-            setCoinsRet.insert(input);
-            nValueRet += input.txout.nValue;
-        }
-        return true;
-    }
-
-    if (nTotalLower < nTargetValue)
-    {
-        if (!coinLowestLarger)
-            return false;
-        setCoinsRet.insert(coinLowestLarger.get());
-        nValueRet += coinLowestLarger->txout.nValue;
-        return true;
-    }
-    if (!use_only_knapsack) {
-        // Calculate cost of change
-        // TODO: In the future, we should use the change output actually made for the transaction and calculate the cost
-        // requred to spend it.
-        CAmount cost_of_change = effective_fee.GetFee(148+34); // 148 bytes for the input, 34 bytes for making the output
-
-        // Filter by the min conf specs and add to vValue and calculate effective value
         for (const COutput &output : vCoins)
         {
             if (!output.fSpendable)
@@ -2366,11 +2320,13 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
             int i = output.i;
             CInputCoin coin(pcoin, i);
             coin.txout.nValue -= (output.nInputBytes < 0 ? 0 : effective_fee.GetFee(output.nInputBytes));
-            vValue.push_back(coin);
+            // Only include outputs that are not negative effective value (i.e. not dust)
+            if (coin.txout.nValue > 0) {
+                vValue.push_back(coin);
+                fee_vec.push_back(output.nInputBytes < 0 ? 0 : effective_fee.GetFee(output.nInputBytes));
+            }
         }
-
-        FastRandomContext rand;
-        return SelectCoinsBnB(vValue, nTargetValue, cost_of_change, setCoinsRet, nValueRet, &rand);
+        return SelectCoinsBnB(vValue, nTargetValue, cost_of_change, setCoinsRet, nValueRet, fee_vec, fee_ret);
     } else {
         // Filter by the min conf specs and add to vValue
         for (const COutput &output : vCoins)
@@ -2394,12 +2350,12 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
     }
 }
 
-bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount& fee_ret, const CFeeRate effective_fee, const CCoinControl* coinControl, bool use_bnb, int change_size) const
+bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount& fee_ret, const CFeeRate effective_fee, const CCoinControl& coin_control, bool use_bnb, int change_size) const
 {
     std::vector<COutput> vCoins(vAvailableCoins);
 
     // coin control -> return all selected outputs (we want all selected to go into the transaction for sure)
-    if (coinControl && coinControl->HasSelected() && !coinControl->fAllowOtherInputs)
+    if (coin_control.HasSelected() && !coin_control.fAllowOtherInputs)
     {
         for (const COutput& out : vCoins)
         {
@@ -2416,8 +2372,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
     CAmount nValueFromPresetInputs = 0;
 
     std::vector<COutPoint> vPresetInputs;
-    if (coinControl)
-        coinControl->ListSelected(vPresetInputs);
+    coin_control.ListSelected(vPresetInputs);
     for (const COutPoint& outpoint : vPresetInputs)
     {
         std::map<uint256, CWalletTx>::const_iterator it = mapWallet.find(outpoint.hash);
@@ -2435,7 +2390,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
     }
 
     // remove preset inputs from vCoins
-    for (std::vector<COutput>::iterator it = vCoins.begin(); it != vCoins.end() && coinControl && coinControl->HasSelected();)
+    for (std::vector<COutput>::iterator it = vCoins.begin(); it != vCoins.end() && coin_control.HasSelected();)
     {
         if (setPresetCoins.count(CInputCoin(it->tx, it->i)))
             it = vCoins.erase(it);
@@ -2644,17 +2599,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
             CFeeRate discard_rate = GetDiscardRate(::feeEstimator);
 
             // Get the fee rate to use effective values in coin selection
-            // Allow to override the default confirmation target over the CoinControl instance
-            int currentConfirmationTarget = nTxConfirmTarget;
-            if (coinControl && coinControl->nConfirmTarget > 0) {
-                currentConfirmationTarget = coinControl->nConfirmTarget;
-            }
-
-            CFeeRate nFeeRateNeeded = GetMinimumFeeRate(currentConfirmationTarget, ::mempool, ::feeEstimator, &feeCalc);
-
-            if (coinControl && coinControl->fOverrideFeeRate) {
-                nFeeRateNeeded = coinControl->nFeeRate;
-            }
+            CFeeRate nFeeRateNeeded = GetMinimumFeeRate(coin_control, ::mempool, ::feeEstimator, &feeCalc);
 
             nFeeRet = 0;
             bool pick_new_inputs = true;
@@ -2719,7 +2664,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                 if (pick_new_inputs) {
                     nValueIn = 0;
                     setCoins.clear();
-                    if (!SelectCoins(vAvailableCoins, nValueToSelect, setCoins, nValueIn, nFeeRet, nFeeRateNeeded, coinControl, use_bnb))
+                    if (!SelectCoins(vAvailableCoins, nValueToSelect, setCoins, nValueIn, nFeeRet, nFeeRateNeeded, coin_control, use_bnb))
                     {
                         // If BnB was used, it was the first pass. No longer the first pass and continue loop with knapsack.
                         if (use_bnb) {

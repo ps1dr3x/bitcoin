@@ -8,6 +8,14 @@
 
 // Descending order comparator
 struct {
+    bool operator()(CInputCoin a, CInputCoin b) const
+    {
+        return a.txout.nValue > b.txout.nValue;
+    }
+} descending;
+
+struct CompareValueOnly
+{
     bool operator()(const CInputCoin& t1,
                     const CInputCoin& t2) const
     {

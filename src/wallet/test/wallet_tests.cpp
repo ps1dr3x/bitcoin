@@ -27,6 +27,12 @@ extern UniValue importwallet(const JSONRPCRequest& request);
 
 BOOST_FIXTURE_TEST_SUITE(wallet_tests, WalletTestingSetup)
 
+static void AddKey(CWallet& wallet, const CKey& key)
+{
+    LOCK(wallet.cs_wallet);
+    wallet.AddKeyPubKey(key, key.GetPubKey());
+}
+
 BOOST_FIXTURE_TEST_CASE(rescan, TestChain100Setup)
 {
     LOCK(cs_main);
