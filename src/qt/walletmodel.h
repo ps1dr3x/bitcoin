@@ -15,6 +15,7 @@
 
 #include <support/allocators/secure.h>
 
+#include <functional>
 #include <map>
 #include <vector>
 
@@ -279,7 +280,7 @@ Q_SIGNALS:
     void coinsSent(CWallet* wallet, SendCoinsRecipient recipient, QByteArray transaction);
 
     // Show progress dialog e.g. for rescan
-    void showProgress(const QString &title, int nProgress);
+    void showProgress(const QString &title, int nProgress, bool resume_possible, const std::function<void()>& cancel);
 
     // Watch-only address added
     void notifyWatchonlyChanged(bool fHaveWatchonly);

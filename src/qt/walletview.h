@@ -7,6 +7,8 @@
 
 #include <amount.h>
 
+#include <functional>
+
 #include <QStackedWidget>
 
 class BitcoinGUI;
@@ -109,7 +111,7 @@ public Q_SLOTS:
     void updateEncryptionStatus();
 
     /** Show progress dialog e.g. for rescan */
-    void showProgress(const QString &title, int nProgress);
+    void showProgress(const QString &title, int nProgress, bool resume_possible, const std::function<void()>& cancel);
 
     /** User has requested more information about the out of sync state */
     void requestedSyncWarningInfo();

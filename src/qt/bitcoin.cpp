@@ -84,6 +84,7 @@ Q_IMPORT_PLUGIN(QCocoaIntegrationPlugin);
 Q_DECLARE_METATYPE(bool*)
 Q_DECLARE_METATYPE(CAmount)
 Q_DECLARE_METATYPE(uint256)
+Q_DECLARE_METATYPE(std::function<void()>)
 
 static void InitMessage(const std::string &message)
 {
@@ -596,6 +597,7 @@ int main(int argc, char *argv[])
     //   IMPORTANT if it is no longer a typedef use the normal variant above
     qRegisterMetaType< CAmount >("CAmount");
     qRegisterMetaType< std::function<void(void)> >("std::function<void(void)>");
+    qRegisterMetaType< std::function<void()> >("std::function<void()>");
 
     /// 3. Application identification
     // must be set before OptionsModel is initialized or translations are loaded,

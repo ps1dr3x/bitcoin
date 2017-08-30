@@ -151,7 +151,7 @@ void WalletView::setWalletModel(WalletModel *_walletModel)
         connect(_walletModel, SIGNAL(requireUnlock()), this, SLOT(unlockWallet()));
 
         // Show progress dialog
-        connect(_walletModel, SIGNAL(showProgress(QString,int)), this, SLOT(showProgress(QString,int)));
+        connect(_walletModel, SIGNAL(showProgress(QString,int, bool, std::function<void()>)), this, SLOT(showProgress(QString,int, bool,std::function<void()>)));
     }
 }
 
@@ -307,7 +307,7 @@ void WalletView::usedReceivingAddresses()
     usedReceivingAddressesPage->activateWindow();
 }
 
-void WalletView::showProgress(const QString &title, int nProgress)
+void WalletView::showProgress(const QString &title, int nProgress, bool resume_possible, const std::function<void(void)>& cancel)
 {
     if (nProgress == 0)
     {

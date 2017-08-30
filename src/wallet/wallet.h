@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <functional>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -1091,7 +1092,7 @@ public:
             ChangeType status)> NotifyTransactionChanged;
 
     /** Show progress e.g. for rescan */
-    boost::signals2::signal<void (const std::string &title, int nProgress)> ShowProgress;
+    boost::signals2::signal<void (const std::string &title, int nProgress, bool resume_possible, const std::function<void()>& cancel)> ShowProgress;
 
     /** Watch-only address added */
     boost::signals2::signal<void (bool fHaveWatchOnly)> NotifyWatchonlyChanged;

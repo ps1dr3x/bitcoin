@@ -170,7 +170,7 @@ static void InitMessage(SplashScreen *splash, const std::string &message)
         Q_ARG(QColor, QColor(55,55,55)));
 }
 
-static void ShowProgress(SplashScreen *splash, const std::string &title, int nProgress, bool resume_possible)
+static void ShowProgress(SplashScreen *splash, const std::string &title, int nProgress, bool resume_possible, const std::function<void()>& cancel)
 {
     InitMessage(splash, title + std::string("\n") +
             (resume_possible ? _("(press q to shutdown and continue later)")
@@ -181,7 +181,7 @@ static void ShowProgress(SplashScreen *splash, const std::string &title, int nPr
 #ifdef ENABLE_WALLET
 void SplashScreen::ConnectWallet(CWallet* wallet)
 {
-    wallet->ShowProgress.connect(boost::bind(ShowProgress, this, _1, _2, false));
+    wallet->ShowProgress.connect(boost::bind(ShowProgress, this, _1, _2, _3, _4));
     connectedWallets.push_back(wallet);
 }
 #endif
@@ -190,7 +190,7 @@ void SplashScreen::subscribeToCoreSignals()
 {
     // Connect signals to client
     uiInterface.InitMessage.connect(boost::bind(InitMessage, this, _1));
-    uiInterface.ShowProgress.connect(boost::bind(ShowProgress, this, _1, _2, _3));
+    uiInterface.ShowProgress.connect(boost::bind(ShowProgress, this, _1, _2, _3, _4));
 #ifdef ENABLE_WALLET
     uiInterface.LoadWallet.connect(boost::bind(&SplashScreen::ConnectWallet, this, _1));
 #endif
@@ -200,10 +200,10 @@ void SplashScreen::unsubscribeFromCoreSignals()
 {
     // Disconnect signals from client
     uiInterface.InitMessage.disconnect(boost::bind(InitMessage, this, _1));
-    uiInterface.ShowProgress.disconnect(boost::bind(ShowProgress, this, _1, _2, _3));
+    uiInterface.ShowProgress.disconnect(boost::bind(ShowProgress, this, _1, _2, _3, _4));
 #ifdef ENABLE_WALLET
     for (CWallet* const & pwallet : connectedWallets) {
-        pwallet->ShowProgress.disconnect(boost::bind(ShowProgress, this, _1, _2, false));
+        pwallet->ShowProgress.disconnect(boost::bind(ShowProgress, this, _1, _2, _3, _4));
     }
 #endif
 }

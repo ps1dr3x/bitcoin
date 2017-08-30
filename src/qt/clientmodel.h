@@ -9,6 +9,7 @@
 #include <QDateTime>
 
 #include <atomic>
+#include <functional>
 
 class BanTableModel;
 class OptionsModel;
@@ -56,7 +57,7 @@ public:
     long getMempoolSize() const;
     //! Return the dynamic memory usage of the mempool
     size_t getMempoolDynamicUsage() const;
-    
+
     quint64 getTotalBytesRecv() const;
     quint64 getTotalBytesSent() const;
 
@@ -106,7 +107,7 @@ Q_SIGNALS:
     void message(const QString &title, const QString &message, unsigned int style);
 
     // Show progress dialog e.g. for verifychain
-    void showProgress(const QString &title, int nProgress);
+    void showProgress(const QString &title, int nProgress, bool resume_possible, const std::function<void()>& cancel);
 
 public Q_SLOTS:
     void updateTimer();

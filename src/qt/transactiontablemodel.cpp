@@ -753,7 +753,7 @@ static void NotifyTransactionChanged(TransactionTableModel *ttm, CWallet *wallet
     notification.invoke(ttm);
 }
 
-static void ShowProgress(TransactionTableModel *ttm, const std::string &title, int nProgress)
+static void ShowProgress(TransactionTableModel *ttm, const std::string &title, int nProgress, bool resume_possible, const std::function<void()>& cancel)
 {
     if (nProgress == 0)
         fQueueNotifications = true;
@@ -778,12 +778,12 @@ void TransactionTableModel::subscribeToCoreSignals()
 {
     // Connect signals to wallet
     wallet->NotifyTransactionChanged.connect(boost::bind(NotifyTransactionChanged, this, _1, _2, _3));
-    wallet->ShowProgress.connect(boost::bind(ShowProgress, this, _1, _2));
+    wallet->ShowProgress.connect(boost::bind(ShowProgress, this, _1, _2, _3, _4));
 }
 
 void TransactionTableModel::unsubscribeFromCoreSignals()
 {
     // Disconnect signals from wallet
     wallet->NotifyTransactionChanged.disconnect(boost::bind(NotifyTransactionChanged, this, _1, _2, _3));
-    wallet->ShowProgress.disconnect(boost::bind(ShowProgress, this, _1, _2));
+    wallet->ShowProgress.disconnect(boost::bind(ShowProgress, this, _1, _2, _3, _4));
 }

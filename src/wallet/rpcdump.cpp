@@ -58,7 +58,7 @@ std::string DecodeDumpString(const std::string &str) {
     for (unsigned int pos = 0; pos < str.length(); pos++) {
         unsigned char c = str[pos];
         if (c == '%' && pos+2 < str.length()) {
-            c = (((str[pos+1]>>6)*9+((str[pos+1]-'0')&15)) << 4) | 
+            c = (((str[pos+1]>>6)*9+((str[pos+1]-'0')&15)) << 4) |
                 ((str[pos+2]>>6)*9+((str[pos+2]-'0')&15));
             pos += 2;
         }
@@ -521,7 +521,6 @@ UniValue importwallet(const JSONRPCRequest& request)
     bool fGood = true;
     {
         LOCK2(cs_main, pwallet->cs_wallet);
-
         EnsureWalletIsUnlocked(pwallet);
 
         std::ifstream file;
@@ -534,9 +533,9 @@ UniValue importwallet(const JSONRPCRequest& request)
         int64_t nFilesize = std::max((int64_t)1, (int64_t)file.tellg());
         file.seekg(0, file.beg);
 
-        pwallet->ShowProgress(_("Importing..."), 0); // show progress dialog in GUI
+        pwallet->ShowProgress(_("Importing..."), 0, false, nullptr); // show progress dialog in GUI
         while (file.good()) {
-            pwallet->ShowProgress("", std::max(1, std::min(99, (int)(((double)file.tellg() / (double)nFilesize) * 100))));
+            pwallet->ShowProgress("", std::max(1, std::min(99, (int)(((double)file.tellg() / (double)nFilesize) * 100))), false, nullptr);
             std::string line;
             std::getline(file, line);
             if (line.empty() || line[0] == '#')
@@ -599,7 +598,7 @@ UniValue importwallet(const JSONRPCRequest& request)
             }
         }
         file.close();
-        pwallet->ShowProgress("", 100); // hide progress dialog in GUI
+        pwallet->ShowProgress("", 100, false, nullptr); // hide progress dialog in GUI
         pwallet->UpdateTimeFirstKey(nTimeBegin);
     }
     pwallet->RescanFromTime(nTimeBegin, reserver, false /* update */);

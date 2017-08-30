@@ -18,6 +18,8 @@
 #include <QPoint>
 #include <QSystemTrayIcon>
 
+#include <functional>
+
 class ClientModel;
 class NetworkStyle;
 class Notificator;
@@ -242,8 +244,8 @@ private Q_SLOTS:
     void detectShutdown();
 
     /** Show progress dialog e.g. for verifychain */
-    void showProgress(const QString &title, int nProgress);
-    
+    void showProgress(const QString &title, int nProgress, bool resume_possible, const std::function<void()>& cancel);
+
     /** When hideTrayIcon setting is changed in OptionsModel hide or show the icon accordingly. */
     void setTrayIconVisible(bool);
 
