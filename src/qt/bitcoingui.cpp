@@ -46,6 +46,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QProgressDialog>
+#include <QPushButton>
 #include <QSettings>
 #include <QShortcut>
 #include <QStackedWidget>
@@ -1164,10 +1165,14 @@ void BitcoinGUI::showProgress(const QString &title, int nProgress, bool resume_p
         progressDialog = new QProgressDialog(title, "", 0, 100);
         progressDialog->setWindowModality(Qt::ApplicationModal);
         progressDialog->setMinimumDuration(0);
-        progressDialog->setCancelButton(0);
         progressDialog->setAutoClose(false);
         progressDialog->setValue(0);
 
+        if (cancel) {
+            progressDialog->setCancelButtonText(tr("Cancel"));
+        } else {
+            progressDialog->setCancelButton(0);
+        }
     }
     else if (nProgress == 100)
     {
@@ -1177,8 +1182,13 @@ void BitcoinGUI::showProgress(const QString &title, int nProgress, bool resume_p
             progressDialog->deleteLater();
         }
     }
-    else if (progressDialog)
-        progressDialog->setValue(nProgress);
+    else if (progressDialog) {
+        if (progressDialog->wasCanceled()) {
+            cancel();
+        } else {
+            progressDialog->setValue(nProgress);
+        }
+    }
 }
 
 void BitcoinGUI::setTrayIconVisible(bool fHideTrayIcon)

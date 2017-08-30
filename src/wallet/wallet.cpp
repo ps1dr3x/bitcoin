@@ -1719,7 +1719,7 @@ CBlockIndex* CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, CBlock
     CBlockIndex* ret = nullptr;
     {
         fAbortRescan = false;
-        ShowProgress(_("Rescanning..."), 0, false, std::function<void(void)>()); // show rescan progress in GUI as dialog or on splashscreen, if -rescan on startup
+        ShowProgress(_("Rescanning..."), 0, false, std::bind(&CWallet::AbortRescan, this)); // show rescan progress in GUI as dialog or on splashscreen, if -rescan on startup
         CBlockIndex* tip = nullptr;
         double dProgressStart;
         double dProgressTip;
@@ -1733,7 +1733,7 @@ CBlockIndex* CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, CBlock
         while (pindex && !fAbortRescan)
         {
             if (pindex->nHeight % 100 == 0 && dProgressTip - dProgressStart > 0.0) {
-                ShowProgress(_("Rescanning..."), std::max(1, std::min(99, (int)((gvp - dProgressStart) / (dProgressTip - dProgressStart) * 100))), false, std::function<void(void)>());
+                ShowProgress(_("Rescanning..."), std::max(1, std::min(99, (int)((gvp - dProgressStart) / (dProgressTip - dProgressStart) * 100))), false, std::bind(&CWallet::AbortRescan, this));
             }
             if (GetTime() >= nNow + 60) {
                 nNow = GetTime();
