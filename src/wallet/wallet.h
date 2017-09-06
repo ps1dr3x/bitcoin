@@ -504,6 +504,7 @@ public:
 
     COutPoint outpoint;
     CTxOut txout;
+    CAmount fee = 0;
 
     bool operator<(const CInputCoin& rhs) const {
         return outpoint < rhs.outpoint;
