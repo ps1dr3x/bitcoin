@@ -120,7 +120,7 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
     BOOST_CHECK(!SelectCoinsBnB(utxo_pool, 1 * CENT, 0.5 * CENT, selection, value_ret, fee_ret));
     selection.clear();
 
-    // Add 1, 2, and 3, utxos
+    // Add utxos
     add_coin(1 * CENT, 1, utxo_pool);
     add_coin(2 * CENT, 2, utxo_pool);
     add_coin(3 * CENT, 3, utxo_pool);
@@ -141,8 +141,8 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
     selection.clear();
 
     // Select 5 Cent
-    add_coin(4 * CENT, 4, actual_selection);
-    add_coin(1 * CENT, 1, actual_selection);
+    add_coin(3 * CENT, 3, actual_selection);
+    add_coin(2 * CENT, 2, actual_selection);
     BOOST_CHECK(SelectCoinsBnB(utxo_pool, 5 * CENT, 0.5 * CENT, selection, value_ret, fee_ret));
     BOOST_CHECK(equal_sets(selection, actual_selection));
     actual_selection.clear();
@@ -155,8 +155,9 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
 
     // Select 10 Cent
     add_coin(5 * CENT, 5, utxo_pool);
-    add_coin(5 * CENT, 5, actual_selection);
     add_coin(4 * CENT, 4, actual_selection);
+    add_coin(3 * CENT, 3, actual_selection);
+    add_coin(2 * CENT, 2, actual_selection);
     add_coin(1 * CENT, 1, actual_selection);
     BOOST_CHECK(SelectCoinsBnB(utxo_pool, 10 * CENT, 0.5 * CENT, selection, value_ret, fee_ret));
     BOOST_CHECK(equal_sets(selection, actual_selection));
@@ -185,36 +186,6 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
     // Behavior tests //
     ////////////////////
     BOOST_TEST_MESSAGE("Testing behavior");
-
-    // Populate utxo pool with 50 inputs from 1 to 50
-    utxo_pool.clear();
-    for (int i = 1; i <= 50; ++i) {
-        add_coin(i * CENT, i, utxo_pool);
-    }
-
-    // Select 100 Cent
-    // One possible exact solution, should appear at least once.
-    add_coin(50 * CENT, 50, actual_selection);
-    add_coin(49 * CENT, 49, actual_selection);
-    add_coin(3 * CENT, 3, actual_selection);
-    bool found_sample_sol = false;
-    // Run 100 times, make sure above solution appears and that solutions are valid
-    for (int i = 0; i < 100; ++i) {
-        // Reset
-        value_ret = 0;
-        selection.clear();
-
-        // Run selection
-        BOOST_CHECK(SelectCoinsBnB(utxo_pool, 100 * CENT, 2 * CENT, selection, value_ret, fee_ret));
-        if (equal_sets(selection, actual_selection)) {
-            found_sample_sol = true;
-        }
-
-        // Check the solution is within the bounds set
-        BOOST_CHECK(value_ret >= 100 * CENT);
-        BOOST_CHECK(value_ret <= 102 * CENT);
-    }
-    BOOST_CHECK(found_sample_sol);
 
     // Select 1 Cent with pool of only greater than 5 Cent
     utxo_pool.clear();

@@ -463,7 +463,7 @@ public:
     CAmount GetChange() const;
 
     // Get the marginal bytes if spending the specified output from this transaction
-    int GetSpendSize(unsigned int i) const;
+    int GetSpendSize(unsigned int out) const;
 
     void GetAmounts(std::list<COutputEntry>& listReceived,
                     std::list<COutputEntry>& listSent, CAmount& nFee, std::string& strSentAccount, const isminefilter& filter) const;
@@ -508,6 +508,7 @@ public:
     COutPoint outpoint;
     CTxOut txout;
     CAmount fee = 0;
+    CAmount long_term_fee = 0;
 
     bool operator<(const CInputCoin& rhs) const {
         return outpoint < rhs.outpoint;
@@ -692,7 +693,7 @@ private:
      * if they are not ours
      */
      // TODO: Change the hard coded change_size later when we aren't just using P2PKH change outputs
-    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount& fee_ret, const CFeeRate effective_fee, const CCoinControl& coin_control, bool use_bnb = true, int change_size = 148+34) const;
+    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount& fee_ret, const CFeeRate effective_fee, const CCoinControl& coin_control, bool use_bnb = true, int change_output_size = 34, int change_spend_size = 148) const;
 
     CWalletDB *pwalletdbEncryption;
 

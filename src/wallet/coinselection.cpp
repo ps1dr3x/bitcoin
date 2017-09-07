@@ -16,13 +16,17 @@ struct {
 
 /*
  * This is the Branch and Bound Coin Selection algorithm designed by Mark Erhardt. It is an exact match algorithm where the exact match
- * is a range with the lower bound being the value we want to spend and the upper bound being that value plus the additional cost 
+ * is a range with the lower bound being the value we want to spend and the upper bound being that value plus the additional cost
  * required to create and spend a change output. To do this, the algorithm builds a binary tree where each node is a UTXO and whether
  * that UTXO is included or not in the current coin selection. The tree is searched in include-first order. Each UTXO is first included
  * and the current selection is evaluated for whether it is within the current threshold. If it is over the threshold, we try excluding
  * the UTXO previously added and the branch of the tree involving its inclusion is then not explored. This process is repeated until
  * a solution is found (i.e. selected value falls within the range), the exhaustion limit is reached, or the tree is exhausted and no
  * solution was found.
+ *
+ * To find the best possible solution, we use a waste metric. The waste metric is defined as the cost to spend the current inputs
+ * now minus the cost to spend the current inputs later, plus the amount exceeding the target value. We search the tree to find the
+ * set of UTXOs which falls within our range and minimizes waste.
  *
  * An additional optimization of this algorithm implemented here is a lookahead value which maintains the total value of the UTXO set
  * of all unexplored UTXOs (i.e. UTXOs that have not yet been included or excluded). This allows us to cut a branch if the remaining
@@ -44,13 +48,13 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
     out_set.clear();
     value_ret = 0;
 
-    if (utxo_pool.size() <=0) {
+    if (utxo_pool.empty()) {
         return false;
     }
 
     int depth = 0;
-    int tries = 100000;
-    std::vector<std::pair<bool, bool>> selection; // First bool: select the utxo at this index; Second bool: traversing second branch of this utxo
+    int remaining_tries = 100000;
+    std::vector<std::pair<bool, bool>> selection; // First bool: select the utxo at this index; Second bool: traversing exclusion branch of this utxo
     selection.assign(utxo_pool.size(), std::pair<bool, bool>(false, false));
     bool done = false;
     bool backtrack = false;
@@ -58,26 +62,39 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
     // Sort the utxo_pool
     std::sort(utxo_pool.begin(), utxo_pool.end(), descending);
 
-    // Calculate remaining
-    CAmount remaining = 0;
+    // Calculate lookahead
+    CAmount lookahead = 0;
     for (const CInputCoin& utxo : utxo_pool) {
-        remaining += utxo.txout.nValue;
+        lookahead += utxo.txout.nValue;
     }
 
-    // Depth first search to find
+    // Best solution
+    CAmount curr_waste = 0;
+    std::vector<std::pair<bool, bool>> best_selection;
+    CAmount best_waste = MAX_MONEY;
+
+    // Depth First search loop for choosing the UTXOs
     while (!done)
     {
-        if (tries <= 0) { // Too many tries, exit
-            return false;
+        if (remaining_tries <= 0) { // Too many tries, exit
+            break;
         } else if (value_ret > target_value + cost_of_change) { // Selected value is out of range, go back and try other branch
             backtrack = true;
+        } else if (curr_waste > best_waste) { // Don't select things which we know will be more wasteful
+            backtrack = true;
         } else if (value_ret >= target_value) { // Selected value is within range
-            done = true;
+            curr_waste += (value_ret - target_value); // This is the excess value which is added to the waste for the below comparison
+            if (curr_waste <= best_waste) {
+                best_selection.assign(selection.begin(), selection.end());
+                best_waste = curr_waste;
+            }
+            curr_waste -= (value_ret - target_value); // Remove the excess value as we will be selecting different coins now
+            backtrack = true;
         } else if (depth >= (int)utxo_pool.size()) { // Reached a leaf node, no solution here
             backtrack = true;
-        } else if (value_ret + remaining < target_value) { // Cannot possibly reach target with amount remaining
+        } else if (value_ret + lookahead < target_value) { // Cannot possibly reach target with the amount remaining in the lookahead
             if (depth == 0) { // At the first utxo, no possible selections, so exit
-                return false;
+                break;
             } else {
                 backtrack = true;
             }
@@ -85,8 +102,10 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
             // Assert that this utxo is not negative. It should never be negative, effective value calculation should have removed it
             assert(utxo_pool.at(depth).txout.nValue >= 0);
 
-            // Remove this utxo from the remaining utxo amount
-            remaining -= utxo_pool.at(depth).txout.nValue;
+            // Remove this utxo from the lookahead utxo amount
+            lookahead -= utxo_pool.at(depth).txout.nValue;
+            // Increase waste
+            curr_waste += (utxo_pool.at(depth).fee - utxo_pool.at(depth).long_term_fee);
             // Inclusion branch first (Largest First Exploration)
             selection.at(depth).first = true;
             value_ret += utxo_pool.at(depth).txout.nValue;
@@ -102,13 +121,14 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
             while (selection.at(depth).second) {
                 selection.at(depth).first = false;
                 selection.at(depth).second = false;
-                remaining += utxo_pool.at(depth).txout.nValue;
+                lookahead += utxo_pool.at(depth).txout.nValue;
 
                 // Step back one
                 --depth;
 
                 if (depth < 0) { // We have walked back to the first utxo and no branch is untraversed. No solution, exit.
-                    return false;
+                    done = true;
+                    break;
                 }
             }
 
@@ -119,17 +139,25 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
                 // These were always included first, try excluding now
                 selection.at(depth).first = false;
                 value_ret -= utxo_pool.at(depth).txout.nValue;
+                curr_waste -= (utxo_pool.at(depth).fee - utxo_pool.at(depth).long_term_fee);
                 ++depth;
             }
         }
-        --tries;
+        --remaining_tries;
+    }
+
+    // Check for solution
+    if (best_selection.empty()) {
+        return false;
     }
 
     // Set output set
-    for (unsigned int i = 0; i < selection.size(); ++i) {
-        if (selection.at(i).first) {
+    value_ret = 0;
+    for (unsigned int i = 0; i < best_selection.size(); ++i) {
+        if (best_selection.at(i).first) {
             out_set.insert(utxo_pool.at(i));
             fee_ret += utxo_pool.at(i).fee;
+            value_ret += utxo_pool.at(i).txout.nValue;
         }
     }
 

@@ -1563,16 +1563,16 @@ int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *pWal
     return GetVirtualTransactionSize(txNew);
 }
 
-int CWalletTx::GetSpendSize(unsigned int i) const
+int CWalletTx::GetSpendSize(unsigned int out) const
 {
     CMutableTransaction txn;
-    txn.vin.push_back(CTxIn(COutPoint(GetHash(), i)));
+    txn.vin.push_back(CTxIn(COutPoint(GetHash(), out)));
     int totalBytes = CalculateMaximumSignedTxSize(txn, pwallet);
     if (totalBytes == -1) return -1;
     int witnessversion = 0;
     std::vector<unsigned char> witnessprogram;
     // We don't want to multi-count segwit empty vin and flag bytes
-    if (tx->vout[i].scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
+    if (tx->vout[out].scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
         totalBytes -= 2;
     }
     return totalBytes - GetVirtualTransactionSize(CMutableTransaction());
@@ -2415,6 +2415,12 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
     std::vector<CInputCoin> vValue;
     if (use_bnb) {
 
+        // Get long term estimate
+        FeeCalculation feeCalc;
+        CCoinControl temp;
+        temp.m_confirm_target = 1008;
+        CFeeRate long_term_feerate = GetMinimumFeeRate(temp, ::mempool, ::feeEstimator, &feeCalc);
+
         // Calculate cost of change
         CAmount cost_of_change = GetDiscardRate(::feeEstimator).GetFee(change_spend_size) + effective_fee.GetFee(change_output_size);
 
@@ -2439,6 +2445,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
             if (coin.txout.nValue > 0) {
                 vValue.push_back(coin);
                 coin.fee = output.nInputBytes < 0 ? 0 : effective_fee.GetFee(output.nInputBytes);
+                coin.long_term_fee = output.nInputBytes < 0 ? 0 : long_term_feerate.GetFee(output.nInputBytes);
             }
         }
         return SelectCoinsBnB(vValue, nTargetValue, cost_of_change, setCoinsRet, nValueRet, fee_ret);
@@ -2465,7 +2472,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
     }
 }
 
-bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount& fee_ret, const CFeeRate effective_fee, const CCoinControl& coin_control, bool use_bnb, int change_size) const
+bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount& fee_ret, const CFeeRate effective_fee, const CCoinControl& coin_control, bool use_bnb, int change_output_size, int change_spend_size) const
 {
     std::vector<COutput> vCoins(vAvailableCoins);
 
@@ -2517,13 +2524,13 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
     bool fRejectLongChains = gArgs.GetBoolArg("-walletrejectlongchains", DEFAULT_WALLET_REJECT_LONG_CHAINS);
 
     bool res = nTargetValue <= nValueFromPresetInputs ||
-        SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 1, 6, 0, vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_size) ||
-        SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 1, 1, 0, vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_size) ||
-        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 0, 1, 2, vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_size)) ||
-        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 0, 1, std::min((size_t)4, nMaxChainLength/3), vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_size)) ||
-        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 0, 1, nMaxChainLength/2, vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_size)) ||
-        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 0, 1, nMaxChainLength, vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_size)) ||
-        (bSpendZeroConfChange && !fRejectLongChains && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 0, 1, std::numeric_limits<uint64_t>::max(), vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_size));
+        SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 1, 6, 0, vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_output_size, change_spend_size) ||
+        SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 1, 1, 0, vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_output_size, change_spend_size) ||
+        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 0, 1, 2, vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_output_size, change_spend_size)) ||
+        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 0, 1, std::min((size_t)4, nMaxChainLength/3), vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_output_size, change_spend_size)) ||
+        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 0, 1, nMaxChainLength/2, vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_output_size, change_spend_size)) ||
+        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 0, 1, nMaxChainLength, vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_output_size, change_spend_size)) ||
+        (bSpendZeroConfChange && !fRejectLongChains && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, 0, 1, std::numeric_limits<uint64_t>::max(), vCoins, setCoinsRet, nValueRet, fee_ret, effective_fee, use_bnb, change_output_size, change_spend_size));
 
     // because SelectCoinsMinConf clears the setCoinsRet, we now add the possible inputs to the coinset
     setCoinsRet.insert(setPresetCoins.begin(), setPresetCoins.end());
