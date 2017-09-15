@@ -166,6 +166,7 @@ static void backupSettings(const fs::path &filename, const QSettings &src)
 {
     qWarning() << "Backing up GUI settings to" << GUIUtil::boostPathToQString(filename);
     QSettings dst(GUIUtil::boostPathToQString(filename), QSettings::IniFormat);
+    dst.clear();
     copySettings(dst, src);
 }
 
