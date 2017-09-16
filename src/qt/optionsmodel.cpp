@@ -154,20 +154,20 @@ void OptionsModel::Init(bool resetSettings)
 /** Helper function to copy contents from one QSettings to another.
  * By using allKeys this also covers nested settings in a hierarchy.
  */
-static void copySettings(QSettings &dst, const QSettings &src)
+static void CopySettings(QSettings& dst, const QSettings& src)
 {
-    for (const QString &key : src.allKeys()) {
+    for (const QString& key : src.allKeys()) {
         dst.setValue(key, src.value(key));
     }
 }
 
 /** Back up a QSettings to an ini-formatted file. */
-static void backupSettings(const fs::path &filename, const QSettings &src)
+static void BackupSettings(const fs::path& filename, const QSettings& src)
 {
     qWarning() << "Backing up GUI settings to" << GUIUtil::boostPathToQString(filename);
     QSettings dst(GUIUtil::boostPathToQString(filename), QSettings::IniFormat);
     dst.clear();
-    copySettings(dst, src);
+    CopySettings(dst, src);
 }
 
 void OptionsModel::Reset()
@@ -175,7 +175,7 @@ void OptionsModel::Reset()
     QSettings settings;
 
     // Backup old settings to chain-specific datadir for troubleshooting
-    backupSettings(GetDataDir(true) / "guisettings.ini.bak", settings);
+    BackupSettings(GetDataDir(true) / "guisettings.ini.bak", settings);
 
     // Save the strDataDir setting
     QString dataDir = Intro::getDefaultDataDirectory();
