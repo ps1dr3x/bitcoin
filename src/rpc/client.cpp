@@ -98,6 +98,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "sendrawtransaction", 1, "allowhighfees" },
     { "combinerawtransaction", 0, "txs" },
     { "fundrawtransaction", 1, "options" },
+    { "updatepsbtwithwallet", 2, "psbtformat"},
     { "gettxout", 1, "n" },
     { "gettxout", 2, "include_mempool" },
     { "gettxoutproof", 0, "txids" },
