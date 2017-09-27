@@ -123,6 +123,7 @@ BASE_SCRIPTS= [
     'uptime.py',
     'resendwallettransactions.py',
     'minchainwork.py',
+    "psbt.py",
 ]
 
 EXTENDED_SCRIPTS = [
