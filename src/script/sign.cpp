@@ -33,6 +33,25 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
     return true;
 }
 
+bool PSBTSignatureCreator::CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& address, const CScript& scriptCode, SigVersion sigversion) const
+{
+    CPubKey pubkey;
+    if (!provider.GetPubKey(address, pubkey)) {
+        return false;
+    }
+    auto sig_it = sigs->find(pubkey);
+    if (sig_it != sigs->end()) {
+        vchSig = sig_it->second;
+        return true;
+    }
+
+    if (MutableTransactionSignatureCreator::CreateSig(provider, vchSig, address, scriptCode, sigversion)) {
+        sigs->emplace(pubkey, vchSig);
+        return true;
+    }
+    return false;
+}
+
 static bool Sign1(const SigningProvider& provider, const CKeyID& address, const BaseSignatureCreator& creator, const CScript& scriptCode, std::vector<valtype>& ret, SigVersion sigversion)
 {
     std::vector<unsigned char> vchSig;
@@ -296,6 +315,119 @@ struct Stacks
         return result;
     }
 };
+}
+
+bool PSBTSigningProvider::GetCScript(const CScriptID &scriptid, CScript& script) const
+{
+    for (SigningProvider* provider : providers) {
+        if (provider->GetCScript(scriptid, script)) {
+            return true;
+        }
+    }
+    // Look for scripts in redeem_scripts
+    auto mi = psbt->redeem_scripts.find(scriptid);
+    if (mi != psbt->redeem_scripts.end()) {
+        script = (*mi).second;
+        return true;
+    }
+    // Look for scripts in witness_scripts
+    for (auto& it : psbt->witness_scripts) {
+        if (CScriptID(it.second) == scriptid) {
+            script = it.second;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PSBTSigningProvider::GetPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const
+{
+    for (SigningProvider* provider : providers) {
+        if (provider->GetPubKey(address, vchPubKeyOut)) {
+            return true;
+        }
+    }
+    // Look for pubkey in hd_keypaths
+    for (auto& it : psbt->hd_keypaths) {
+        if (it.first.GetID() == address) {
+            vchPubKeyOut = it.first;
+            return true;
+        }
+    }
+    // Look for pubkey in all partial sigs
+    for (auto& in : psbt->inputs) {
+        for (auto& it : in.partial_sigs) {
+            if (it.first.GetID() == address) {
+                vchPubKeyOut = it.first;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool PSBTSigningProvider::GetKey(const CKeyID &address, CKey& key) const
+{
+    for (SigningProvider* provider : providers) {
+        if (provider->GetKey(address, key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void PSBTSigningProvider::AddSigningProvider(SigningProvider* provider)
+{
+    if (provider) {
+        providers.push_back(provider);
+    }
+}
+
+// Iterates through all inputs of the partially signed transaction and just produces signatures for what it can and adds them to the psbt partial sigs
+// Returns true if the transaction is finalized, false otherwise. False does not necessarily mean that signing failed, just that a complete set of signatures
+// for the transaction does not exist or the final transaction was not constructed.
+bool SignPartiallySignedTransaction(PartiallySignedTransaction& psbt, SigningProvider* provider_in, int nHashType, bool finalize)
+{
+    // Create the psbt signing provider
+    PSBTSigningProvider provider(&psbt);
+    provider.AddSigningProvider(provider_in);
+
+    CMutableTransaction mtx = psbt.tx;
+    bool solved = finalize;
+    for (unsigned int i = 0; i < mtx.vin.size(); ++i) {
+        CTxIn& txin = mtx.vin[i];
+        PartiallySignedInput psbt_in = psbt.inputs[i];
+
+        // Find the non witness utxo first
+        CTxOut utxo;
+        if (psbt_in.non_witness_utxo) {
+            utxo = psbt_in.non_witness_utxo->vout[txin.prevout.n];
+        }
+        // Now find the witness utxo if the non witness doesn't exist
+        else if (!psbt_in.witness_utxo.IsNull()) {
+            utxo = psbt_in.witness_utxo;
+        }
+        // If there is no nonwitness or witness utxo, then this input is fully signed and we are done here
+        else {
+            continue;
+        }
+
+        CScript script = utxo.scriptPubKey;
+        const CAmount& amount = utxo.nValue;
+
+        PSBTSignatureCreator creator(&psbt.inputs[i].partial_sigs, &mtx, i, amount, nHashType);
+        SignatureData sigdata;
+        bool sig_complete = ProduceSignature(provider, creator, script, sigdata);
+        if (sig_complete && finalize) {
+            // signatures are complete
+            // Add scriptsig/scriptwitness to transaction
+            psbt.tx.vin[i].scriptSig = sigdata.scriptSig;
+            psbt.tx.vin[i].scriptWitness = sigdata.scriptWitness;
+        }
+        solved &= sig_complete;
+    }
+
+    return solved;
 }
 
 static Stacks CombineSignatures(const CScript& scriptPubKey, const BaseSignatureChecker& checker,

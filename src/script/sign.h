@@ -10,6 +10,7 @@
 #include <pubkey.h>
 #include <script/interpreter.h>
 #include <streams.h>
+#include <version.h>
 
 class CKey;
 class CKeyID;
@@ -488,8 +489,34 @@ struct PartiallySignedTransaction
     void SanitizeForSerialization();
 };
 
+class PSBTSignatureCreator : public MutableTransactionSignatureCreator {
+private:
+    std::map<CPubKey, std::vector<unsigned char>>* sigs;
+    bool finalize_only;
+
+public:
+    PSBTSignatureCreator(std::map<CPubKey, std::vector<unsigned char>>* sigs, CMutableTransaction* tx, unsigned int nInIn, const CAmount& amountIn, int nHashTypeIn) : MutableTransactionSignatureCreator(tx, nInIn, amountIn, nHashTypeIn), sigs(sigs) {}
+    bool CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& address, const CScript& scriptCode, SigVersion sigversion) const override;
+};
+
+class PSBTSigningProvider : public SigningProvider {
+private:
+    std::vector<SigningProvider*> providers;
+    PartiallySignedTransaction* psbt;
+
+public:
+    bool GetCScript(const CScriptID &scriptid, CScript& script) const override;
+    bool GetPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const override;
+    bool GetKey(const CKeyID &address, CKey& key) const override;
+    void AddSigningProvider(SigningProvider* provider);
+
+    PSBTSigningProvider(PartiallySignedTransaction* psbt) : psbt(psbt) {}
+};
+
 /** Produce a script signature using a generic signature creator. */
 bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreator& creator, const CScript& scriptPubKey, SignatureData& sigdata);
+
+bool SignPartiallySignedTransaction(PartiallySignedTransaction& psbt, SigningProvider* provider, int nHashType, bool finalize = false);
 
 /** Produce a script signature for a transaction. */
 bool SignSignature(const SigningProvider &provider, const CScript& fromPubKey, CMutableTransaction& txTo, unsigned int nIn, const CAmount& amount, int nHashType);
