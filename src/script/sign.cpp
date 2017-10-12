@@ -106,6 +106,13 @@ static bool SignStep(const BaseSignatureCreator& creator, const CScript& scriptP
         ret.push_back(valtype()); // workaround CHECKMULTISIG bug
         return (SignN(vSolutions, creator, scriptPubKey, ret, sigversion));
 
+    case TX_CLTV_MULTISIG:
+    {
+        ret.push_back(valtype()); // workaround CHECKMULTISIG bug
+        std::vector<valtype> vSolutions2(vSolutions.begin()+1, vSolutions.end());
+        return (SignN(vSolutions2, creator, scriptPubKey, ret, sigversion));
+    }
+
     case TX_WITNESS_V0_KEYHASH:
         ret.push_back(vSolutions[0]);
         return true;
@@ -348,6 +355,11 @@ static Stacks CombineSignatures(const CScript& scriptPubKey, const BaseSignature
         }
     case TX_MULTISIG:
         return Stacks(CombineMultisig(scriptPubKey, checker, vSolutions, sigs1.script, sigs2.script, sigversion));
+    case TX_CLTV_MULTISIG:
+    {
+        std::vector<valtype> vSolutions2(vSolutions.begin()+1, vSolutions.end());
+        return Stacks(CombineMultisig(scriptPubKey, checker, vSolutions2, sigs1.script, sigs2.script, sigversion));
+    }
     case TX_WITNESS_V0_SCRIPTHASH:
         if (sigs1.witness.empty() || sigs1.witness.back().empty())
             return sigs2;

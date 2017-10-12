@@ -183,6 +183,7 @@ enum opcodetype
 
 
     // template matching params
+    OP_PUSHEDDATA = 0xf0,
     OP_SMALLINTEGER = 0xfa,
     OP_PUBKEYS = 0xfb,
     OP_PUBKEYHASH = 0xfd,

@@ -31,6 +31,7 @@ const char* GetTxnOutputType(txnouttype t)
     case TX_WITNESS_V0_KEYHASH: return "witness_v0_keyhash";
     case TX_WITNESS_V0_SCRIPTHASH: return "witness_v0_scripthash";
     case TX_WITNESS_UNKNOWN: return "witness_unknown";
+    case TX_CLTV_MULTISIG: return "cltv-multisig";
     }
     return nullptr;
 }
@@ -49,6 +50,9 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
 
         // Sender provides N pubkeys, receivers provides M signatures
         mTemplates.insert(std::make_pair(TX_MULTISIG, CScript() << OP_SMALLINTEGER << OP_PUBKEYS << OP_SMALLINTEGER << OP_CHECKMULTISIG));
+
+        // Sender provides N pubkeys and a lock time, receivers provides M signatures
+        mTemplates.insert(std::make_pair(TX_CLTV_MULTISIG, CScript() << OP_PUSHEDDATA << OP_CHECKLOCKTIMEVERIFY << OP_DROP << OP_SMALLINTEGER << OP_PUBKEYS << OP_SMALLINTEGER << OP_CHECKMULTISIG));
     }
 
     vSolutionsRet.clear();
@@ -121,6 +125,12 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                     unsigned char n = vSolutionsRet.back()[0];
                     if (m < 1 || n < 1 || m > n || vSolutionsRet.size()-2 != n)
                         return false;
+                } else if (typeRet == TX_CLTV_MULTISIG) {
+                    // Additional checks for TX_CLTV_MULTISIG:
+                    unsigned char m = vSolutionsRet[1][0];
+                    unsigned char n = vSolutionsRet.back()[0];
+                    if (m < 1 || n < 1 || m > n || vSolutionsRet.size()-3 != n)
+                        return false;
                 }
                 return true;
             }
@@ -166,6 +176,11 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                 }
                 else
                     break;
+            }
+            else if (opcode2 == OP_PUSHEDDATA)
+            {
+                // Some arbitrary data was pushed
+                vSolutionsRet.push_back(vch1);
             }
             else if (opcode1 != opcode2 || vch1 != vch2)
             {
@@ -243,6 +258,22 @@ bool ExtractDestinations(const CScript& scriptPubKey, txnouttype& typeRet, std::
     {
         nRequiredRet = vSolutions.front()[0];
         for (unsigned int i = 1; i < vSolutions.size()-1; i++)
+        {
+            CPubKey pubKey(vSolutions[i]);
+            if (!pubKey.IsValid())
+                continue;
+
+            CTxDestination address = pubKey.GetID();
+            addressRet.push_back(address);
+        }
+
+        if (addressRet.empty())
+            return false;
+    }
+    else if (typeRet == TX_CLTV_MULTISIG)
+    {
+        nRequiredRet = vSolutions[1][0];
+        for (unsigned int i = 2; i < vSolutions.size()-1; i++)
         {
             CPubKey pubKey(vSolutions[i]);
             if (!pubKey.IsValid())
