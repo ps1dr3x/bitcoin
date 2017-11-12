@@ -251,11 +251,13 @@ bool OpenWallets()
     }
 
     for (const std::string& walletFile : gArgs.GetArgs("-wallet")) {
-        CWallet * const pwallet = CWallet::CreateWalletFromFile(walletFile);
-        if (!pwallet) {
-            return false;
+        if (boost::filesystem::exists(walletFile)) {
+            CWallet * const pwallet = CWallet::CreateWalletFromFile(walletFile);
+            if (!pwallet) {
+                return false;
+            }
+            vpwallets.push_back(pwallet);
         }
-        vpwallets.push_back(pwallet);
     }
 
     return true;
