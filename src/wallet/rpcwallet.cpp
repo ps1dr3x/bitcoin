@@ -45,9 +45,32 @@ CWallet *GetWalletForJSONRPCRequest(const JSONRPCRequest& request)
                 return pwallet;
             }
         }
+        for (const std::string& walletFile : gArgs.GetArgs("-wallet")) {
+            if (walletFile == requestedWallet) {
+                CWallet * const pwallet = CWallet::CreateWalletFromFile(walletFile);
+                if (!pwallet) {
+                    return nullptr;
+                }
+                ::vpwallets.push_back(pwallet);
+                return pwallet;
+            }
+        }
         throw JSONRPCError(RPC_WALLET_NOT_FOUND, "Requested wallet does not exist or is not loaded");
     }
-    return ::vpwallets.size() == 1 || (request.fHelp && ::vpwallets.size() > 0) ? ::vpwallets[0] : nullptr;
+    if ((request.fHelp && ::vpwallets.size() > 0) || gArgs.GetBoolArg("-disablewallet", DEFAULT_DISABLE_WALLET)) {
+        return nullptr;
+    } else if (gArgs.GetArgs("-wallet").size() == 1 && ::vpwallets.size() == 1) {
+        return ::vpwallets[0];
+    } else if (gArgs.GetArgs("-wallet").size() == 1 && ::vpwallets.empty()) {
+        /* At this point, the only wallet that can be returned is the default wallet, so make it */
+        CWallet* const pwallet = CWallet::CreateWalletFromFile(gArgs.GetArgs("-wallet").at(0));
+        if (!pwallet) {
+            return nullptr;
+        }
+        ::vpwallets.push_back(pwallet);
+        return pwallet;
+    }
+    return nullptr;
 }
 
 std::string HelpRequiringPassphrase(CWallet * const pwallet)
