@@ -485,16 +485,19 @@ void BitcoinApplication::initializeResult(bool success)
 
 #ifdef ENABLE_WALLET
         // TODO: Expose secondary wallets
-        if (!vpwallets.empty())
+        if (vpwallets.empty())
         {
-            walletModel = new WalletModel(platformStyle, vpwallets[0], optionsModel);
-
-            window->addWallet(BitcoinGUI::DEFAULT_WALLET, walletModel);
-            window->setCurrentWallet(BitcoinGUI::DEFAULT_WALLET);
-
-            connect(walletModel, SIGNAL(coinsSent(CWallet*,SendCoinsRecipient,QByteArray)),
-                             paymentServer, SLOT(fetchPaymentACK(CWallet*,const SendCoinsRecipient&,QByteArray)));
+            CWallet* const pwallet = CWallet::CreateWalletFromFile(gArgs.GetArgs("-wallet").at(0));
+            vpwallets.push_back(pwallet);
         }
+
+        walletModel = new WalletModel(platformStyle, vpwallets[0], optionsModel);
+
+        window->addWallet(BitcoinGUI::DEFAULT_WALLET, walletModel);
+        window->setCurrentWallet(BitcoinGUI::DEFAULT_WALLET);
+
+        connect(walletModel, SIGNAL(coinsSent(CWallet*,SendCoinsRecipient,QByteArray)),
+                         paymentServer, SLOT(fetchPaymentACK(CWallet*,const SendCoinsRecipient&,QByteArray)));
 #endif
 
         // If -min option passed, start window minimized.
