@@ -216,6 +216,14 @@ public:
 
     int getDefaultConfirmTarget() const;
 
+    void ReloadWallet();
+
+    void subscribeToCoreSignals();
+    void unsubscribeFromCoreSignals();
+
+    void SubscribeTableModelToCoreSignals();
+    void UnsubscribeTableModelFromCoreSignals();
+
 private:
     CWallet *wallet;
     bool fHaveWatchOnly;
@@ -241,8 +249,6 @@ private:
 
     QTimer *pollTimer;
 
-    void subscribeToCoreSignals();
-    void unsubscribeFromCoreSignals();
     void checkBalanceChanged();
 
 Q_SIGNALS:

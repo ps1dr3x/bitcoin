@@ -74,6 +74,8 @@ public:
 
     EditStatus getEditStatus() const { return editStatus; }
 
+    void ReloadWallet();
+
 private:
     WalletModel *walletModel;
     CWallet *wallet;
