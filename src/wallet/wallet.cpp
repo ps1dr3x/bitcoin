@@ -1540,10 +1540,31 @@ int CWalletTx::GetRequestCount() const
     return nRequests;
 }
 
+// Helper for producing a bunch of max-sized low-S signatures (eg 72 bytes)
+bool CWallet::DummySignTx(CMutableTransaction &txNew, const std::vector<CTxOut> &txouts) const
+{
+    // Fill in dummy signatures for fee calculation.
+    int nIn = 0;
+    for (const auto& txout : txouts)
+    {
+        const CScript& scriptPubKey = txout.scriptPubKey;
+        SignatureData sigdata;
+
+        if (!ProduceSignature(DummySignatureCreator(this), scriptPubKey, sigdata))
+        {
+            return false;
+        } else {
+            UpdateTransaction(txNew, nIn, sigdata);
+        }
+
+        nIn++;
+    }
+    return true;
+}
+
 int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *pWallet)
 {
-    CMutableTransaction txNew(tx);
-    std::vector<CInputCoin> vCoins;
+    std::vector<CTxOut> txouts;
     // Look up the inputs.  We should have already checked that this transaction
     // IsAllFromMe(ISMINE_SPENDABLE), so every input should already be in our
     // wallet, with a valid index into the vout array, and the ability to sign.
@@ -1553,9 +1574,16 @@ int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *pWal
             return -1;
         }
         assert(input.prevout.n < mi->second.tx->vout.size());
-        vCoins.emplace_back(CInputCoin(&(mi->second), input.prevout.n));
+        txouts.emplace_back(mi->second.tx->vout[input.prevout.n]);
     }
-    if (!pWallet->DummySignTx(txNew, vCoins)) {
+    return CalculateMaximumSignedTxSize(tx, pWallet, txouts);
+}
+
+// txouts needs to be in the order of tx.vin
+int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *pWallet, const std::vector<CTxOut> txouts)
+{
+    CMutableTransaction txNew(tx);
+    if (!pWallet->DummySignTx(txNew, txouts)) {
         // This should never happen, because IsAllFromMe(ISMINE_SPENDABLE)
         // implies that we can sign for every input.
         return -1;
@@ -1563,16 +1591,18 @@ int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *pWal
     return GetVirtualTransactionSize(txNew);
 }
 
-int CWalletTx::GetSpendSize(unsigned int out) const
+int GetTxOutSpendSize(const CTxOut& txout, const CWallet* pwallet)
 {
     CMutableTransaction txn;
-    txn.vin.push_back(CTxIn(COutPoint(GetHash(), out)));
-    int totalBytes = CalculateMaximumSignedTxSize(txn, pwallet);
+    txn.vin.push_back(CTxIn(COutPoint()));
+    std::vector<CTxOut> txouts;
+    txouts.emplace_back(txout);
+    int totalBytes = CalculateMaximumSignedTxSize(txn, pwallet, txouts);
     if (totalBytes == -1) return -1;
     int witnessversion = 0;
     std::vector<unsigned char> witnessprogram;
     // We don't want to multi-count segwit empty vin and flag bytes
-    if (tx->vout[out].scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
+    if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
         totalBytes -= 2;
     }
     return totalBytes - GetVirtualTransactionSize(CMutableTransaction());
@@ -2708,7 +2738,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
     assert(txNew.nLockTime < LOCKTIME_THRESHOLD);
     FeeCalculation feeCalc;
     CAmount nFeeNeeded;
-    unsigned int nBytes;
+    int nBytes;
     {
         std::set<CInputCoin> setCoins;
         LOCK2(cs_main, cs_wallet);
@@ -2819,7 +2849,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                 if (pick_new_inputs) {
                     nValueIn = 0;
                     setCoins.clear();
-                    if (!SelectCoins(vAvailableCoins, nValueToSelect, setCoins, nValueIn, nFeeRet, nFeeRateNeeded, coin_control, use_bnb))
+                    if (!SelectCoins(vAvailableCoins, nValueToSelect, setCoins, nValueIn, nFeeRet, nFeeRateNeeded, coin_control, use_bnb, change_prototype_size, GetTxOutSpendSize(change_prototype_txout, this)))
                     {
                         // If BnB was used, it was the first pass. No longer the first pass and continue loop with knapsack.
                         if (use_bnb) {
@@ -2884,18 +2914,10 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                     txNew.vin.push_back(CTxIn(coin.outpoint,CScript(),
                                               nSequence));
 
-                // Fill in dummy signatures for fee calculation.
-                if (!DummySignTx(txNew, setCoins)) {
+                nBytes = CalculateMaximumSignedTxSize(txNew, this);
+                if (nBytes < 0) {
                     strFailReason = _("Signing transaction failed");
                     return false;
-                }
-
-                nBytes = GetVirtualTransactionSize(txNew);
-
-                // Remove scriptSigs to eliminate the fee calculation dummy signatures
-                for (auto& vin : txNew.vin) {
-                    vin.scriptSig = CScript();
-                    vin.scriptWitness.SetNull();
                 }
 
                 nFeeNeeded = GetMinimumFee(nBytes, coin_control, ::mempool, ::feeEstimator, &feeCalc);

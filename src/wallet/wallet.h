@@ -269,6 +269,9 @@ public:
     bool IsCoinBase() const { return tx->IsCoinBase(); }
 };
 
+//Get the marginal bytes of spending the specified output
+int GetTxOutSpendSize(const CTxOut& txout, const CWallet* pwallet);
+
 /** 
  * A transaction with a bunch of additional info that only the owner cares about.
  * It includes any unrecorded transactions needed to link it back to the block chain.
@@ -463,7 +466,10 @@ public:
     CAmount GetChange() const;
 
     // Get the marginal bytes if spending the specified output from this transaction
-    int GetSpendSize(unsigned int out) const;
+    int GetSpendSize(unsigned int out) const
+    {
+        return GetTxOutSpendSize(tx->vout[out], pwallet);
+    }
 
     void GetAmounts(std::list<COutputEntry>& listReceived,
                     std::list<COutputEntry>& listSent, CAmount& nFee, std::string& strSentAccount, const isminefilter& filter) const;
@@ -693,7 +699,7 @@ private:
      * if they are not ours
      */
      // TODO: Change the hard coded change_size later when we aren't just using P2PKH change outputs
-    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount& fee_ret, const CFeeRate effective_fee, const CCoinControl& coin_control, bool use_bnb = true, int change_output_size = 34, int change_spend_size = 148) const;
+    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount& fee_ret, const CFeeRate effective_fee, const CCoinControl& coin_control, bool use_bnb, int change_output_size, int change_spend_size) const;
 
     CWalletDB *pwalletdbEncryption;
 
@@ -879,10 +885,9 @@ public:
      * completion the coin set and corresponding actual target value is
      * assembled
      */
-     // TODO: Change the hard coded change_size when we aren't only using P2PKH change outputs
     bool SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int nConfTheirs, uint64_t nMaxAncestors, std::vector<COutput> vCoins,
         std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount& fee_ret, const CFeeRate effective_fee,
-        bool use_bnb = true, int change_output_size = 34, int change_spend_size = 148) const;
+        bool use_bnb, int change_output_size, int change_spend_size) const;
 
     bool IsSpent(const uint256& hash, unsigned int n) const;
 
@@ -1003,8 +1008,7 @@ public:
     void ListAccountCreditDebit(const std::string& strAccount, std::list<CAccountingEntry>& entries);
     bool AddAccountingEntry(const CAccountingEntry&);
     bool AddAccountingEntry(const CAccountingEntry&, CWalletDB *pwalletdb);
-    template <typename ContainerType>
-    bool DummySignTx(CMutableTransaction &txNew, const ContainerType &coins) const;
+    bool DummySignTx(CMutableTransaction &txNew, const std::vector<CTxOut> &txouts) const;
 
     static CFeeRate minTxFee;
     static CFeeRate fallbackFee;
@@ -1249,31 +1253,6 @@ public:
     }
 };
 
-// Helper for producing a bunch of max-sized low-S signatures (eg 72 bytes)
-// ContainerType is meant to hold pair<CWalletTx *, int>, and be iterable
-// so that each entry corresponds to each vIn, in order.
-template <typename ContainerType>
-bool CWallet::DummySignTx(CMutableTransaction &txNew, const ContainerType &coins) const
-{
-    // Fill in dummy signatures for fee calculation.
-    int nIn = 0;
-    for (const auto& coin : coins)
-    {
-        const CScript& scriptPubKey = coin.txout.scriptPubKey;
-        SignatureData sigdata;
-
-        if (!ProduceSignature(DummySignatureCreator(this), scriptPubKey, sigdata))
-        {
-            return false;
-        } else {
-            UpdateTransaction(txNew, nIn, sigdata);
-        }
-
-        nIn++;
-    }
-    return true;
-}
-
 OutputType ParseOutputType(const std::string& str, OutputType default_type = OUTPUT_TYPE_DEFAULT);
 const std::string& FormatOutputType(OutputType type);
 
@@ -1323,10 +1302,8 @@ public:
 
 // Calculate the size of the transaction assuming all signatures are max size
 // Use DummySignatureCreator, which inserts 72 byte signatures everywhere.
-// TODO: re-use this in CWallet::CreateTransaction (right now
-// CreateTransaction uses the constructed dummy-signed tx to do a priority
-// calculation, but we should be able to refactor after priority is removed).
 // NOTE: this requires that all inputs must be in mapWallet (eg the tx should
 // be IsAllFromMe).
 int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *pWallet);
+int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *pWallet, const std::vector<CTxOut> txouts);
 #endif // BITCOIN_WALLET_WALLET_H
