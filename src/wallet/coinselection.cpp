@@ -156,6 +156,7 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
     for (unsigned int i = 0; i < best_selection.size(); ++i) {
         if (best_selection.at(i).first) {
             out_set.insert(utxo_pool.at(i));
+            LogPrintf("Fee of UTXO: %ld\n", utxo_pool.at(i).fee);
             fee_ret += utxo_pool.at(i).fee;
             value_ret += utxo_pool.at(i).txout.nValue;
         }

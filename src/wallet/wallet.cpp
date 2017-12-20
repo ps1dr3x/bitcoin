@@ -2854,6 +2854,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                         // If BnB was used, it was the first pass. No longer the first pass and continue loop with knapsack.
                         if (use_bnb) {
                             use_bnb = false;
+                            LogPrintf("BnB was not used.\n");
                             continue;
                         }
                         else {
@@ -2862,6 +2863,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                         }
                     }
                     if (use_bnb) {
+                        LogPrintf("BnB was used.\n");
                         nFeeRet += output_fees;
                     }
                 }
@@ -2929,6 +2931,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                     strFailReason = _("Transaction too large for fee policy");
                     return false;
                 }
+                LogPrintf("nFeeRet %ld, nFeeNeeded %ld\n", nFeeRet, nFeeNeeded);
 
                 if (nFeeRet >= nFeeNeeded) {
                     // Reduce fee to only the needed amount if possible. This
@@ -2993,6 +2996,12 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                 use_bnb = false;
                 continue;
             }
+        }
+        
+        if (nChangePosInOut == -1) {
+            LogPrintf("No change\n");
+        } else {
+            LogPrintf("Yes change\n");
         }
 
         if (nChangePosInOut == -1) reservekey.ReturnKey(); // Return any reserved key if we don't have change
