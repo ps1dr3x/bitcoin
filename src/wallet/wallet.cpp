@@ -2937,6 +2937,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                     strFailReason = _("Transaction too large for fee policy");
                     return false;
                 }
+                LogPrintf("nFeeRet %ld, nFeeNeeded %ld\n", nFeeRet, nFeeNeeded);
 
                 if (nFeeRet >= nFeeNeeded) {
                     // Reduce fee to only the needed amount if possible. This
@@ -3000,6 +3001,12 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                 nFeeRet = nFeeNeeded;
                 continue;
             }
+        }
+        
+        if (nChangePosInOut == -1) {
+            LogPrintf("No change\n");
+        } else {
+            LogPrintf("Yes change\n");
         }
 
         if (nChangePosInOut == -1) reservekey.ReturnKey(); // Return any reserved key if we don't have change
