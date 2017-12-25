@@ -6,6 +6,7 @@
 #include <base58.h>
 #include <chain.h>
 #include <coins.h>
+#include <consensus/merkle.h>
 #include <consensus/validation.h>
 #include <core_io.h>
 #include <init.h>
@@ -13,6 +14,7 @@
 #include <validation.h>
 #include <validationinterface.h>
 #include <merkleblock.h>
+#include <miner.h>
 #include <net.h>
 #include <policy/policy.h>
 #include <policy/rbf.h>
@@ -26,6 +28,7 @@
 #include <txmempool.h>
 #include <uint256.h>
 #include <utilstrencodings.h>
+#include <validation.h>
 #ifdef ENABLE_WALLET
 #include <wallet/rpcwallet.h>
 #include <wallet/wallet.h>
@@ -1011,6 +1014,97 @@ UniValue sendrawtransaction(const JSONRPCRequest& request)
     return hashTx.GetHex();
 }
 
+// NOTE: Assumes a conclusive result; if result is inconclusive, it must be handled by caller
+static UniValue BIP22ValidationResult(const CValidationState& state)
+{
+    if (state.IsValid())
+        return NullUniValue;
+
+    std::string strRejectReason = state.GetRejectReason();
+    if (state.IsError())
+        throw JSONRPCError(RPC_VERIFY_ERROR, strRejectReason);
+    if (state.IsInvalid())
+    {
+        if (strRejectReason.empty())
+            return "rejected";
+        return strRejectReason;
+    }
+    // Should be impossible
+    return "valid?";
+}
+
+UniValue verifyrawtransaction(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1 || request.params.size() > 2)
+        throw std::runtime_error(
+            "verifyrawtransaction \"hexstring\" ( consensusonly )\n"
+            "\nChecks a raw transaction for validity as if it were to be broadcast now or included in the next block.\n"
+            "\nAlso see createrawtransaction and signrawtransaction calls.\n"
+            "\nArguments:\n"
+            "1. \"hexstring\"    (string, required) The hex string of the raw transaction)\n"
+            "2. consensusonly    (boolean, optional, default=false) Only check as if the transaction was included in the next block.\n"
+            "\nResult:\n"
+            "\"valid\"             (boolean) Whether the transaction is valid.\n"
+            "\nExamples:\n"
+            "\nCreate a transaction\n"
+            + HelpExampleCli("createrawtransaction", "\"[{\\\"txid\\\" : \\\"mytxid\\\",\\\"vout\\\":0}]\" \"{\\\"myaddress\\\":0.01}\"") +
+            "Sign the transaction, and get back the hex\n"
+            + HelpExampleCli("signrawtransaction", "\"myhex\"") +
+            "\nVerify the transaction (signed hex)\n"
+            + HelpExampleCli("verifyrawtransaction", "\"signedhex\"") +
+            "\nAs a json rpc call\n"
+            + HelpExampleRpc("verifyrawtransaction", "\"signedhex\"")
+        );
+
+    RPCTypeCheck(request.params, {UniValue::VSTR, UniValue::VBOOL});
+
+    // parse hex string from parameter
+    CMutableTransaction mtx;
+    if (!DecodeHexTx(mtx, request.params[0].get_str()))
+        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
+    CTransactionRef tx(MakeTransactionRef(std::move(mtx)));
+
+    if (!request.params[1].isNull() && request.params[1].get_bool()) {
+        LOCK(cs_main);
+
+        // Construct the block
+        CBlockIndex* const pindexPrev = chainActive.Tip();
+        CBlock block;
+        unsigned int nHeight = pindexPrev->nHeight + 1;
+        block.nVersion = ComputeBlockVersion(pindexPrev, Params().GetConsensus());
+
+        // Create coinbase transaction.
+        CMutableTransaction coinbaseTx;
+        coinbaseTx.vin.resize(1);
+        coinbaseTx.vin[0].prevout.SetNull();
+        coinbaseTx.vout.resize(1);
+        coinbaseTx.vout[0].scriptPubKey = CScript();
+        coinbaseTx.vout[0].nValue = GetBlockSubsidy(nHeight, Params().GetConsensus());
+        coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
+        block.vtx.emplace_back(MakeTransactionRef(std::move(coinbaseTx)));
+
+        // Insert our transaction
+        block.vtx.emplace_back(tx);
+
+        // Finish coinbase tx
+        GenerateCoinbaseCommitment(block, pindexPrev, Params().GetConsensus());
+
+        // Fill in header
+        block.hashPrevBlock  = pindexPrev->GetBlockHash();
+        UpdateTime(&block, Params().GetConsensus(), pindexPrev);
+        block.nBits          = GetNextWorkRequired(pindexPrev, &block, Params().GetConsensus());
+        block.nNonce         = 0;
+        block.hashMerkleRoot = BlockMerkleRoot(block);
+
+        // Check validity
+        CValidationState state;
+        TestBlockValidity(state, Params(), block, pindexPrev, false, false);
+        return BIP22ValidationResult(state);
+    } else {
+        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Non-consensus isn't ready yet");
+    }
+}
+
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         argNames
   //  --------------------- ------------------------  -----------------------  ----------
@@ -1021,6 +1115,7 @@ static const CRPCCommand commands[] =
     { "rawtransactions",    "sendrawtransaction",     &sendrawtransaction,     {"hexstring","allowhighfees"} },
     { "rawtransactions",    "combinerawtransaction",  &combinerawtransaction,  {"txs"} },
     { "rawtransactions",    "signrawtransaction",     &signrawtransaction,     {"hexstring","prevtxs","privkeys","sighashtype"} }, /* uses wallet if enabled */
+    { "rawtransactions",    "verifyrawtransaction",    &verifyrawtransaction,   {"hexstring","consensusonly"} },
 
     { "blockchain",         "gettxoutproof",          &gettxoutproof,          {"txids", "blockhash"} },
     { "blockchain",         "verifytxoutproof",       &verifytxoutproof,       {"proof"} },
