@@ -2473,9 +2473,9 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
             coin.txout.nValue -= (output.nInputBytes < 0 ? 0 : effective_fee.GetFee(output.nInputBytes));
             // Only include outputs that are not negative effective value (i.e. not dust)
             if (coin.txout.nValue > 0) {
-                vValue.push_back(coin);
                 coin.fee = output.nInputBytes < 0 ? 0 : effective_fee.GetFee(output.nInputBytes);
                 coin.long_term_fee = output.nInputBytes < 0 ? 0 : long_term_feerate.GetFee(output.nInputBytes);
+                vValue.push_back(coin);
             }
         }
         return SelectCoinsBnB(vValue, nTargetValue, cost_of_change, setCoinsRet, nValueRet, fee_ret);
@@ -2823,7 +2823,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                         }
                     } else if (use_bnb){
                         // On the first pass BnB selector, include the fee cost for outputs
-                        output_fees +=  nFeeRateNeeded.GetFee(::GetSerializeSize(txout, SER_NETWORK, PROTOCOL_VERSION));
+                        output_fees +=  nFeeRateNeeded.GetFee(::GetSerializeSize(txout, SER_NETWORK, PROTOCOL_VERSION) + 10);
                     }
 
                     if (IsDust(txout, ::dustRelayFee))
