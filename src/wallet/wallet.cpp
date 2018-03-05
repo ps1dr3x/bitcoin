@@ -346,6 +346,7 @@ bool CWallet::LoadCScript(const CScript& redeemScript)
 
 bool CWallet::AddWatchOnly(const CScript& dest)
 {
+    CreateWalletIfNotExist();
     if (!CCryptoKeyStore::AddWatchOnly(dest))
         return false;
     const CKeyMetadata& meta = m_script_metadata[CScriptID(dest)];
@@ -788,6 +789,7 @@ int64_t CWallet::IncOrderPosNext(CWalletDB *pwalletdb)
 
 bool CWallet::AccountMove(std::string strFrom, std::string strTo, CAmount nAmount, std::string strComment)
 {
+    CreateWalletIfNotExist();
     CWalletDB walletdb(*dbw);
     if (!walletdb.TxnBegin())
         return false;
@@ -3111,6 +3113,7 @@ void CWallet::ListAccountCreditDebit(const std::string& strAccount, std::list<CA
 
 bool CWallet::AddAccountingEntry(const CAccountingEntry& acentry)
 {
+    CreateWalletIfNotExist();
     CWalletDB walletdb(*dbw);
 
     return AddAccountingEntry(acentry, &walletdb);
@@ -3271,6 +3274,7 @@ const std::string& CWallet::GetAccountName(const CScript& scriptPubKey) const
  */
 bool CWallet::NewKeyPool()
 {
+    CreateWalletIfNotExist();
     {
         LOCK(cs_wallet);
         CWalletDB walletdb(*dbw);
@@ -3322,6 +3326,7 @@ void CWallet::LoadKeyPool(int64_t nIndex, const CKeyPool &keypool)
 
 bool CWallet::TopUpKeyPool(unsigned int kpSize)
 {
+    CreateWalletIfNotExist();
     {
         LOCK(cs_wallet);
 
@@ -3438,6 +3443,7 @@ void CWallet::ReturnKey(int64_t nIndex, bool fInternal, const CPubKey& pubkey)
 
 bool CWallet::GetKeyFromPool(CPubKey& result, bool internal)
 {
+    CreateWalletIfNotExist();
     CKeyPool keypool;
     {
         LOCK(cs_wallet);
@@ -3908,6 +3914,32 @@ std::vector<std::string> CWallet::GetDestValues(const std::string& prefix) const
     return values;
 }
 
+bool CWallet::CreateWalletIfNotExist()
+{
+    // Create the wallet file itself if it doesn't exist
+    if (dbw->m_db_file_exists) {
+        return true;
+    }
+    CDB cdb(*dbw, "cr+");
+    cdb.Close();
+
+    // Ensure that new wallets only be opened by clients supporting HD with chain split and expects no default key
+    SetMinVersion(FEATURE_NO_DEFAULT_KEY);
+
+    // generate a new master key
+    CPubKey masterPubKey = GenerateNewHDMasterKey();
+    if (!SetHDMasterKey(masterPubKey))
+        throw std::runtime_error(std::string(__func__) + ": Storing master key failed");
+
+    // Top up the keypool
+    if (!TopUpKeyPool()) {
+        throw std::runtime_error(std::string(__func__) + ": Unable to generate initial keys");
+    }
+
+    SetBestChain(chainActive.GetLocator());
+    return true;
+}
+
 CWallet* CWallet::CreateWalletFromFile(const std::string walletFile)
 {
     // needed to restore wallet transaction meta data after -zapwallettxes
@@ -3978,30 +4010,12 @@ CWallet* CWallet::CreateWalletFromFile(const std::string walletFile)
         walletInstance->SetMaxVersion(nMaxVersion);
     }
 
-    if (fFirstRun)
-    {
-        // ensure this wallet.dat can only be opened by clients supporting HD with chain split and expects no default key
-        if (!gArgs.GetBoolArg("-usehd", true)) {
+    if (gArgs.IsArgSet("-usehd")) {
+        bool useHD = gArgs.GetBoolArg("-usehd", true);
+        if (!gArgs.GetBoolArg("-usehd", true) && fFirstRun) {
             InitError(strprintf(_("Error creating %s: You can't create non-HD wallets with this version."), walletFile));
             return nullptr;
         }
-        walletInstance->SetMinVersion(FEATURE_NO_DEFAULT_KEY);
-
-        // generate a new master key
-        CPubKey masterPubKey = walletInstance->GenerateNewHDMasterKey();
-        if (!walletInstance->SetHDMasterKey(masterPubKey))
-            throw std::runtime_error(std::string(__func__) + ": Storing master key failed");
-
-        // Top up the keypool
-        if (!walletInstance->TopUpKeyPool()) {
-            InitError(_("Unable to generate initial keys") += "\n");
-            return nullptr;
-        }
-
-        walletInstance->SetBestChain(chainActive.GetLocator());
-    }
-    else if (gArgs.IsArgSet("-usehd")) {
-        bool useHD = gArgs.GetBoolArg("-usehd", true);
         if (walletInstance->IsHDEnabled() && !useHD) {
             InitError(strprintf(_("Error loading %s: You can't disable HD on an already existing HD wallet"), walletFile));
             return nullptr;
@@ -4015,7 +4029,9 @@ CWallet* CWallet::CreateWalletFromFile(const std::string walletFile)
     LogPrintf(" wallet      %15dms\n", GetTimeMillis() - nStart);
 
     // Try to top up keypool. No-op if the wallet is locked.
-    walletInstance->TopUpKeyPool();
+    if (!fFirstRun) {
+        walletInstance->TopUpKeyPool();
+    }
 
     CBlockIndex *pindexRescan = chainActive.Genesis();
     if (!gArgs.GetBoolArg("-rescan", false))
@@ -4271,6 +4287,7 @@ std::vector<CTxDestination> GetAllDestinationsForKey(const CPubKey& key)
 
 CTxDestination CWallet::AddAndGetDestinationForScript(const CScript& script, OutputType type)
 {
+    CreateWalletIfNotExist();
     // Note that scripts over 520 bytes are not yet supported.
     switch (type) {
     case OUTPUT_TYPE_LEGACY:

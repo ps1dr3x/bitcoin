@@ -751,6 +751,9 @@ private:
      */
     const CBlockIndex* m_last_block_processed;
 
+    // Creates the wallet if it does not exist
+    bool CreateWalletIfNotExist();
+
 public:
     /*
      * Main wallet lock.
