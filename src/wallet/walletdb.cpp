@@ -523,6 +523,9 @@ DBErrors CWalletDB::LoadWallet(CWallet* pwallet)
     CWalletScanState wss;
     bool fNoncriticalErrors = false;
     DBErrors result = DB_LOAD_OK;
+    if (!m_dbw.m_db_file_exists) {
+        return result;
+    }
 
     LOCK(pwallet->cs_wallet);
     try {

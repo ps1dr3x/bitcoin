@@ -404,6 +404,7 @@ CDB::CDB(CWalletDBWrapper& dbw, const char* pszMode, bool fFlushOnCloseIn) : pdb
     fFlushOnClose = fFlushOnCloseIn;
     env = dbw.env;
     if (dbw.IsDummy()) {
+        dbw.m_db_file_exists = true;
         return;
     }
     const std::string &strFilename = dbw.strFile;
@@ -439,9 +440,16 @@ CDB::CDB(CWalletDBWrapper& dbw, const char* pszMode, bool fFlushOnCloseIn) : pdb
                             nFlags,                                   // Flags
                             0);
 
+            if (ret == ENOENT) {
+                // The wallet file does not exist, so skip
+                pdb_temp->close(0);
+                dbw.m_db_file_exists = false;
+                return;
+            }
             if (ret != 0) {
                 throw std::runtime_error(strprintf("CDB: Error %d, can't open database %s", ret, strFilename));
             }
+            dbw.m_db_file_exists = true;
             CheckUniqueFileid(*env, strFilename, *pdb_temp);
 
             pdb = pdb_temp.release();

@@ -101,7 +101,7 @@ public:
 
     /** Create DB handle to real database */
     CWalletDBWrapper(CDBEnv *env_in, const std::string &strFile_in) :
-        nUpdateCounter(0), nLastSeen(0), nLastFlushed(0), nLastWalletUpdate(0), env(env_in), strFile(strFile_in)
+        nUpdateCounter(0), nLastSeen(0), nLastFlushed(0), nLastWalletUpdate(0), m_db_file_exists(true), env(env_in), strFile(strFile_in)
     {
     }
 
@@ -127,6 +127,7 @@ public:
     unsigned int nLastSeen;
     unsigned int nLastFlushed;
     int64_t nLastWalletUpdate;
+    bool m_db_file_exists;
 
 private:
     /** BerkeleyDB specific */
