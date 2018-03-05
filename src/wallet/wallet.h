@@ -500,10 +500,12 @@ public:
 
         outpoint = COutPoint(walletTx->GetHash(), i);
         txout = walletTx->tx->vout[i];
+        effective_value = txout.nValue;
     }
 
     COutPoint outpoint;
     CTxOut txout;
+    CAmount effective_value;
 
     bool operator<(const CInputCoin& rhs) const {
         return outpoint < rhs.outpoint;
