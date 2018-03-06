@@ -4,6 +4,7 @@
 
 #include <bench/bench.h>
 #include <wallet/wallet.h>
+#include <wallet/coinselection.h>
 
 #include <set>
 
@@ -44,9 +45,9 @@ static void CoinSelection(benchmark::State& state)
 
         std::set<CInputCoin> setCoinsRet;
         CAmount nValueRet;
-        CAmount fee_ret;
-        bool success = wallet.SelectCoinsMinConf(1003 * COIN, 1, 6, 0, vCoins, setCoinsRet, nValueRet, fee_ret, CFeeRate(0), true, 34, 148)
-                       || wallet.SelectCoinsMinConf(1003 * COIN, 1, 6, 0, vCoins, setCoinsRet, nValueRet, fee_ret, CFeeRate(0), false, 0, 0);
+        CAmount not_input_fees = 0;
+        bool success = wallet.SelectCoinsMinConf(1003 * COIN, 1, 6, 0, vCoins, setCoinsRet, nValueRet, not_input_fees, CFeeRate(0), true, 34, 148)
+                       || wallet.SelectCoinsMinConf(1003 * COIN, 1, 6, 0, vCoins, setCoinsRet, nValueRet, not_input_fees, CFeeRate(0), false, 0, 0);
         assert(success);
         assert(nValueRet == 1003 * COIN);
         assert(setCoinsRet.size() == 2);
@@ -59,4 +60,48 @@ static void CoinSelection(benchmark::State& state)
     }
 }
 
+typedef std::set<CInputCoin> CoinSet;
+
+static void add_coin(const CAmount& nValue, int nInput, std::vector<CInputCoin>& set, const CWallet& wallet)
+{
+    CMutableTransaction tx;
+    tx.vout.resize(nInput+1);
+    tx.vout[nInput].nValue = nValue;
+    std::unique_ptr<CWalletTx> wtx(new CWalletTx(&wallet, MakeTransactionRef(std::move(tx))));
+    set.emplace_back(wtx.get(), nInput);
+}
+
+static CAmount make_hard_case(int utxos, std::vector<CInputCoin>& utxo_pool, const CWallet& wallet)
+{
+    utxo_pool.clear();
+    CAmount target = 0;
+    for (int i = 0; i < utxos; ++i) {
+        target += (CAmount)1 << (utxos+i);
+        add_coin((CAmount)1 << (utxos+i), 2*i, utxo_pool, wallet);
+        add_coin(((CAmount)1 << (utxos+i)) + ((CAmount)1 << (utxos-1-i)), 2*i + 1, utxo_pool, wallet);
+    }
+    return target;
+}
+
+static void BnBExhaustion(benchmark::State& state)
+{
+    // Setup
+    const CWallet wallet;
+    std::vector<CInputCoin> utxo_pool;
+    CoinSet selection;
+    CAmount value_ret = 0;
+    CAmount not_input_fees = 0;
+
+    while (state.KeepRunning()) {
+        // Benchmark
+        CAmount target = make_hard_case(17, utxo_pool, wallet);
+        SelectCoinsBnB(utxo_pool, target, 0, selection, value_ret, not_input_fees); // Should exhaust
+
+        // Cleanup
+        utxo_pool.clear();
+        selection.clear();
+    }
+}
+
 BENCHMARK(CoinSelection, 650);
+BENCHMARK(BnBExhaustion, 650);
