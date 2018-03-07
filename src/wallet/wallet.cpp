@@ -2463,7 +2463,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
                 continue;
 
             int i = output.i;
-            CInputCoin coin(pcoin, i);
+            CInputCoin coin(pcoin->tx, i);
             coin.effective_value = coin.txout.nValue - (output.nInputBytes < 0 ? 0 : effective_fee.GetFee(output.nInputBytes));
             // Only include outputs that are not negative effective value (i.e. not dust)
             if (coin.txout.nValue > 0) {
@@ -2489,7 +2489,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
                 continue;
 
             int i = output.i;
-            CInputCoin coin(pcoin, i);
+            CInputCoin coin(pcoin->tx, i);
             vValue.push_back(coin);
         }
         return KnapsackSolver(vValue, nTargetValue, setCoinsRet, nValueRet);
@@ -2511,7 +2511,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
             if (!out.fSpendable)
                  continue;
             nValueRet += out.tx->tx->vout[out.i].nValue;
-            setCoinsRet.insert(CInputCoin(out.tx, out.i));
+            setCoinsRet.insert(CInputCoin(out.tx->tx, out.i));
         }
         return (nValueRet >= nTargetValue);
     }
@@ -2536,7 +2536,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
                 return false;
             // Just to calculate the marginal byte size
             nValueFromPresetInputs += pcoin->tx->vout[outpoint.n].nValue;
-            setPresetCoins.insert(CInputCoin(pcoin, outpoint.n));
+            setPresetCoins.insert(CInputCoin(pcoin->tx, outpoint.n));
         } else
             return false; // TODO: Allow non-wallet inputs
     }
@@ -2544,7 +2544,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
     // remove preset inputs from vCoins
     for (std::vector<COutput>::iterator it = vCoins.begin(); it != vCoins.end() && coin_control.HasSelected();)
     {
-        if (setPresetCoins.count(CInputCoin(it->tx, it->i)))
+        if (setPresetCoins.count(CInputCoin(it->tx->tx, it->i)))
             it = vCoins.erase(it);
         else
             ++it;

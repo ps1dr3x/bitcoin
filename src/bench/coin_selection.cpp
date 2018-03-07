@@ -62,23 +62,22 @@ static void CoinSelection(benchmark::State& state)
 
 typedef std::set<CInputCoin> CoinSet;
 
-static void add_coin(const CAmount& nValue, int nInput, std::vector<CInputCoin>& set, const CWallet& wallet)
+static void add_coin(const CAmount& nValue, int nInput, std::vector<CInputCoin>& set)
 {
     CMutableTransaction tx;
     tx.vout.resize(nInput+1);
     tx.vout[nInput].nValue = nValue;
-    std::unique_ptr<CWalletTx> wtx(new CWalletTx(&wallet, MakeTransactionRef(std::move(tx))));
-    set.emplace_back(wtx.get(), nInput);
+    set.emplace_back(MakeTransactionRef(tx), nInput);
 }
 
-static CAmount make_hard_case(int utxos, std::vector<CInputCoin>& utxo_pool, const CWallet& wallet)
+static CAmount make_hard_case(int utxos, std::vector<CInputCoin>& utxo_pool)
 {
     utxo_pool.clear();
     CAmount target = 0;
     for (int i = 0; i < utxos; ++i) {
         target += (CAmount)1 << (utxos+i);
-        add_coin((CAmount)1 << (utxos+i), 2*i, utxo_pool, wallet);
-        add_coin(((CAmount)1 << (utxos+i)) + ((CAmount)1 << (utxos-1-i)), 2*i + 1, utxo_pool, wallet);
+        add_coin((CAmount)1 << (utxos+i), 2*i, utxo_pool);
+        add_coin(((CAmount)1 << (utxos+i)) + ((CAmount)1 << (utxos-1-i)), 2*i + 1, utxo_pool);
     }
     return target;
 }
@@ -86,7 +85,6 @@ static CAmount make_hard_case(int utxos, std::vector<CInputCoin>& utxo_pool, con
 static void BnBExhaustion(benchmark::State& state)
 {
     // Setup
-    const CWallet wallet;
     std::vector<CInputCoin> utxo_pool;
     CoinSet selection;
     CAmount value_ret = 0;
@@ -94,7 +92,7 @@ static void BnBExhaustion(benchmark::State& state)
 
     while (state.KeepRunning()) {
         // Benchmark
-        CAmount target = make_hard_case(17, utxo_pool, wallet);
+        CAmount target = make_hard_case(17, utxo_pool);
         SelectCoinsBnB(utxo_pool, target, 0, selection, value_ret, not_input_fees); // Should exhaust
 
         // Cleanup
