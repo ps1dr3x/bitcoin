@@ -62,6 +62,7 @@ static void CoinSelection(benchmark::State& state)
 
 typedef std::set<CInputCoin> CoinSet;
 
+// Copied from src/wallet/test/coinselector_tests.cpp
 static void add_coin(const CAmount& nValue, int nInput, std::vector<CInputCoin>& set)
 {
     CMutableTransaction tx;
@@ -70,6 +71,7 @@ static void add_coin(const CAmount& nValue, int nInput, std::vector<CInputCoin>&
     set.emplace_back(MakeTransactionRef(tx), nInput);
 }
 
+// Copied from src/wallet/test/coinselector_tests.cpp
 static CAmount make_hard_case(int utxos, std::vector<CInputCoin>& utxo_pool)
 {
     utxo_pool.clear();
