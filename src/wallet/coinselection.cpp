@@ -56,7 +56,6 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
 
     int depth = 0;
     std::vector<bool> curr_selection(utxo_pool.size()); // select the utxo at this index
-    bool backtrack = false;
     CAmount actual_target = not_input_fees + target_value;
 
     // Calculate curr_available_value
@@ -78,6 +77,7 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
     // Depth First search loop for choosing the UTXOs
     for (size_t i = 0; i < TOTAL_TRIES; ++i) {
         // Conditions for starting a backtrack
+        bool backtrack = false;
         if (curr_value + curr_available_value < actual_target ||                // Cannot possibly reach target with the amount remaining in the curr_available_value.
             curr_value > actual_target + cost_of_change ||    // Selected value is out of range, go back and try other branch
             (curr_waste > best_waste && (utxo_pool.at(0).fee - utxo_pool.at(0).long_term_fee) > 0)) { // Don't select things which we know will be more wasteful if the waste is increasing
