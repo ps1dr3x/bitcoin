@@ -2429,6 +2429,22 @@ const CTxOut& CWallet::FindNonChangeParentOutput(const CTransaction& tx, int out
     return ptx->vout[n];
 }
 
+bool CWallet::OutputEligibleForSpending(const COutput& output, const int nConfMine, const int nConfTheirs, const uint64_t nMaxAncestors) const
+{
+    if (!output.fSpendable)
+        return false;
+
+    const CWalletTx *pcoin = output.tx;
+
+    if (output.nDepth < (pcoin->IsFromMe(ISMINE_ALL) ? nConfMine : nConfTheirs))
+        return false;
+
+    if (!mempool.TransactionWithinChainLimit(pcoin->GetHash(), nMaxAncestors))
+        return false;
+
+    return true;
+}
+
 bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMine, const int nConfTheirs, const uint64_t nMaxAncestors,
     std::vector<COutput> vCoins, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount not_input_fees, const CFeeRate effective_fee,
     bool use_bnb, int change_output_size, int change_spend_size) const
@@ -2451,16 +2467,10 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
         // Filter by the min conf specs and add to vValue and calculate effective value
         for (const COutput &output : vCoins)
         {
-            if (!output.fSpendable)
+            if (!OutputEligibleForSpending(output, nConfMine, nConfTheirs, nMaxAncestors))
                 continue;
 
             const CWalletTx *pcoin = output.tx;
-
-            if (output.nDepth < (pcoin->IsFromMe(ISMINE_ALL) ? nConfMine : nConfTheirs))
-                continue;
-
-            if (!mempool.TransactionWithinChainLimit(pcoin->GetHash(), nMaxAncestors))
-                continue;
 
             int i = output.i;
             CInputCoin coin(pcoin->tx, i);
@@ -2477,16 +2487,10 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
         // Filter by the min conf specs and add to vValue
         for (const COutput &output : vCoins)
         {
-            if (!output.fSpendable)
+            if (!OutputEligibleForSpending(output, nConfMine, nConfTheirs, nMaxAncestors))
                 continue;
 
             const CWalletTx *pcoin = output.tx;
-
-            if (output.nDepth < (pcoin->IsFromMe(ISMINE_ALL) ? nConfMine : nConfTheirs))
-                continue;
-
-            if (!mempool.TransactionWithinChainLimit(pcoin->GetHash(), nMaxAncestors))
-                continue;
 
             int i = output.i;
             CInputCoin coin(pcoin->tx, i);
