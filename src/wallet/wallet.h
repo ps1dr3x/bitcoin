@@ -663,7 +663,7 @@ private:
      * all coins from coinControl are selected; Never select unconfirmed coins
      * if they are not ours
      */
-    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount not_input_fees, const CFeeRate effective_fee, const CCoinControl& coin_control, bool& use_bnb, int change_output_size, int change_spend_size) const;
+    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, size_t tx_noinputs_size, const CFeeRate effective_fee, const CCoinControl& coin_control, bool& use_bnb, int change_output_size, int change_spend_size) const;
 
     CWalletDB *pwalletdbEncryption;
 
@@ -845,7 +845,7 @@ public:
      * assembled
      */
     bool SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int nConfTheirs, uint64_t nMaxAncestors, std::vector<COutput> vCoins,
-        std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CAmount not_input_fees, const CFeeRate effective_fee,
+        std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, size_t tx_noinputs_size, const CFeeRate effective_fee,
         bool use_bnb, int change_output_size, int change_spend_size) const;
 
     bool IsSpent(const uint256& hash, unsigned int n) const;

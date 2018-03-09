@@ -217,7 +217,7 @@ BOOST_AUTO_TEST_CASE(knapsack_tests)
 {
     CoinSet setCoinsRet, setCoinsRet2;
     CAmount nValueRet;
-    CAmount not_input_fees = 0;
+    size_t not_input_fees = 0;
 
     LOCK(testWallet.cs_wallet);
 
