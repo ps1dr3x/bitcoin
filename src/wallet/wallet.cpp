@@ -2470,10 +2470,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
             if (!OutputEligibleForSpending(output, nConfMine, nConfTheirs, nMaxAncestors))
                 continue;
 
-            const CWalletTx *pcoin = output.tx;
-
-            int i = output.i;
-            CInputCoin coin(pcoin->tx, i);
+            CInputCoin coin(output.tx->tx, output.i);
             coin.effective_value = coin.txout.nValue - (output.nInputBytes < 0 ? 0 : effective_fee.GetFee(output.nInputBytes));
             // Only include outputs that are not negative effective value (i.e. not dust)
             if (coin.txout.nValue > 0) {
@@ -2490,10 +2487,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
             if (!OutputEligibleForSpending(output, nConfMine, nConfTheirs, nMaxAncestors))
                 continue;
 
-            const CWalletTx *pcoin = output.tx;
-
-            int i = output.i;
-            CInputCoin coin(pcoin->tx, i);
+            CInputCoin coin(output.tx->tx, output.i);
             vValue.push_back(coin);
         }
         return KnapsackSolver(vValue, nTargetValue, setCoinsRet, nValueRet);
