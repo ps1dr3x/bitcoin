@@ -642,6 +642,26 @@ private:
     std::vector<char> _ssExtra;
 };
 
+struct CoinSelectionParams
+{
+    bool use_bnb;
+    size_t change_output_size;
+    size_t change_spend_size;
+    CFeeRate effective_fee;
+    size_t tx_noinputs_size;
+    CoinSelectionParams(bool use_bnb, size_t change_output_size, size_t change_spend_size, CFeeRate effective_fee, size_t tx_noinputs_size) :
+    use_bnb(use_bnb), change_output_size(change_output_size), change_spend_size(change_spend_size), effective_fee(effective_fee), tx_noinputs_size(tx_noinputs_size) {}
+    CoinSelectionParams() : use_bnb(true), change_output_size(0), change_spend_size(0), effective_fee(CFeeRate(0)), tx_noinputs_size(0) {}
+};
+
+struct CoinEligibilityFilter
+{
+    int conf_mine;
+    int conf_theirs;
+    uint64_t max_ancestors;
+    CoinEligibilityFilter(int conf_mine, int conf_theirs, uint64_t max_ancestors) :
+    conf_mine(conf_mine), conf_theirs(conf_theirs), max_ancestors(max_ancestors) {}
+};
 
 class WalletRescanReserver; //forward declarations for ScanForWalletTransactions/RescanFromTime
 /** 
@@ -663,7 +683,7 @@ private:
      * all coins from coinControl are selected; Never select unconfirmed coins
      * if they are not ours
      */
-    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, size_t tx_noinputs_size, const CFeeRate effective_fee, const CCoinControl& coin_control, bool& use_bnb, int change_output_size, int change_spend_size) const;
+    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CCoinControl& coin_control, CoinSelectionParams& coin_selection_params) const;
 
     CWalletDB *pwalletdbEncryption;
 
@@ -844,9 +864,8 @@ public:
      * completion the coin set and corresponding actual target value is
      * assembled
      */
-    bool SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int nConfTheirs, uint64_t nMaxAncestors, std::vector<COutput> vCoins,
-        std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, size_t tx_noinputs_size, const CFeeRate effective_fee,
-        bool use_bnb, int change_output_size, int change_spend_size) const;
+    bool SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibilty_filter, std::vector<COutput> vCoins,
+        std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, CoinSelectionParams& coin_selection_params) const;
 
     bool IsSpent(const uint256& hash, unsigned int n) const;
 
@@ -1151,7 +1170,7 @@ public:
     CTxDestination AddAndGetDestinationForScript(const CScript& script, OutputType);
 
     /** Whether a given output is spendable by this wallet */
-    bool OutputEligibleForSpending(const COutput& output, const int nConfMine, const int nConfTheirs, const uint64_t nMaxAncestors) const;
+    bool OutputEligibleForSpending(const COutput& output, const CoinEligibilityFilter& eligibilty_filter) const;
 };
 
 /** A key allocated from the key pool. */
