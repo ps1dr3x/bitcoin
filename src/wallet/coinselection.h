@@ -51,4 +51,9 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
 
 // Original coin selection algorithm as a fallback
 bool KnapsackSolver(const CAmount& nTargetValue, std::vector<CInputCoin>& vCoins, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet);
+
+/**
+ * Randomly selects coins until the target value is exceeded. Uses effective values
+ */
+bool SingleRandomDraw(const CAmount& target_value, std::vector<CInputCoin>& utxo_pool, std::set<CInputCoin>& out_set, CAmount& value_ret, CAmount non_input_fees);
 #endif // BITCOIN_WALLET_COINSELECTION_H
