@@ -298,3 +298,32 @@ bool KnapsackSolver(const CAmount& nTargetValue, std::vector<CInputCoin>& vCoins
 
     return true;
 }
+
+/*
+ * Randomly selects coins until the target value is exceeded. Uses effective values
+ */
+bool SingleRandomDraw(const CAmount& target_value, std::vector<CInputCoin>& utxo_pool, std::set<CInputCoin>& out_set, CAmount& value_ret, CAmount not_input_fees)
+{
+    random_shuffle(utxo_pool.begin(), utxo_pool.end(), GetRandInt);
+    CAmount curr_value = 0;
+    for (const CInputCoin& utxo : utxo_pool) {
+        // Assert that this utxo is not negative. It should never be negative, effective value calculation should have removed it
+        assert(utxo.effective_value > 0);
+
+        // We have enough coins, stop selecting
+        if (curr_value >= target_value + not_input_fees) {
+            break;
+        }
+
+        // Add this coin
+        curr_value += utxo.effective_value;
+        value_ret += utxo.txout.nValue;
+        out_set.insert(utxo);
+    }
+
+    // We've gone through all coins and still don't have enough value, so fail
+    if (curr_value < target_value) {
+        return false;
+    }
+    return true;
+}
