@@ -33,7 +33,7 @@ static CAmount balance = 0;
 CoinEligibilityFilter filter_standard(1, 6, 0);
 CoinEligibilityFilter filter_confirmed(1, 1, 0);
 CoinEligibilityFilter filter_standard_extra(6, 6, 0);
-CoinSelectionParams coin_selection_params(false, 0, 0, CFeeRate(0), 0);
+CoinSelectionParams coin_selection_params(0, 0, CFeeRate(0), 0);
 
 static void add_coin(const CAmount& nValue, int nInput, std::vector<CInputCoin>& set)
 {
@@ -214,7 +214,7 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
     }
 
     // Make sure that effective value is working in SelectCoinsMinConf when BnB is used
-    CoinSelectionParams coin_selection_params_bnb(true, 0, 0, CFeeRate(3000), 0);
+    CoinSelectionParams coin_selection_params_bnb(0, 0, CFeeRate(3000), 0);
     CoinSet setCoinsRet;
     CAmount nValueRet;
     bool bnb_used;
@@ -260,10 +260,9 @@ BOOST_AUTO_TEST_CASE(SelectCoins_test)
         target = rand.randrange(balance - 1000) + 1000;
 
         // Perform selection
-        CoinSelectionParams coin_selection_params_knapsack(false, 34, 148, CFeeRate(0), 0);
-        CoinSelectionParams coin_selection_params_bnb(true, 34, 148, CFeeRate(0), 0);
-        BOOST_CHECK(testWallet.SelectCoinsMinConf(target, filter_standard, vCoins, out_set, out_value, coin_selection_params_bnb, bnb_used) ||
-                    testWallet.SelectCoinsMinConf(target, filter_standard, vCoins, out_set, out_value, coin_selection_params_knapsack, bnb_used));
+        CoinSelectionParams coin_selection_params_knapsack(34, 148, CFeeRate(0), 0);
+        CoinSelectionParams coin_selection_params_bnb(34, 148, CFeeRate(0), 0);
+        BOOST_CHECK(testWallet.SelectCoinsMinConf(target, filter_standard, vCoins, out_set, out_value, coin_selection_params_bnb, bnb_used));
         BOOST_CHECK_GE(out_value, target);
     }
 }
