@@ -59,9 +59,9 @@ class RawTransactionsTest(BitcoinTestFramework):
         watchonly_txid = self.nodes[0].sendtoaddress(watchonly_address, watchonly_amount)
         self.nodes[0].sendtoaddress(self.nodes[3].getnewaddress(), watchonly_amount / 10)
 
-        self.nodes[0].sendtoaddress(self.nodes[2].getnewaddress(), 1.5)
-        self.nodes[0].sendtoaddress(self.nodes[2].getnewaddress(), 1.0)
-        self.nodes[0].sendtoaddress(self.nodes[2].getnewaddress(), 5.0)
+        print(self.nodes[0].gettransaction(self.nodes[0].sendtoaddress(self.nodes[2].getnewaddress(), 1.5)))
+        print(self.nodes[0].gettransaction(self.nodes[0].sendtoaddress(self.nodes[2].getnewaddress(), 1.0)))
+        print(self.nodes[0].gettransaction(self.nodes[0].sendtoaddress(self.nodes[2].getnewaddress(), 5.0)))
 
         self.nodes[0].generate(1)
         self.sync_all()

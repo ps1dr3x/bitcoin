@@ -672,7 +672,7 @@ private:
      * if they are not ours
      */
     bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet,
-                    const CCoinControl& coin_control, const CoinSelectionParams& coin_selection_params, bool& bnb_used, bool use_effective = true) const;
+                    const CCoinControl& coin_control, const CoinSelectionParams& coin_selection_params, bool use_effective = true) const;
 
     WalletBatch *encrypted_batch = nullptr;
 
@@ -835,7 +835,7 @@ public:
      * assembled
      */
     bool SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibilty_filter, std::vector<COutput> vCoins,
-        std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CoinSelectionParams& coin_selection_params, bool& bnb_used, bool use_effective = true) const;
+        std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CoinSelectionParams& coin_selection_params, bool use_effective = true) const;
 
     bool IsSpent(const uint256& hash, unsigned int n) const;
 

@@ -217,11 +217,10 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
     CoinSelectionParams coin_selection_params_bnb(0, 0, CFeeRate(3000), 0);
     CoinSet setCoinsRet;
     CAmount nValueRet;
-    bool bnb_used;
     empty_wallet();
     add_coin(1);
     vCoins.at(0).nInputBytes = 40; // Make sure that it has a negative effective value. The next check should assert if this somehow got through. Otherwise it will fail
-    BOOST_CHECK(!testWallet.SelectCoinsMinConf( 1 * CENT, filter_standard, vCoins, setCoinsRet, nValueRet, coin_selection_params_bnb, bnb_used));
+    BOOST_CHECK(!testWallet.SelectCoinsMinConf( 1 * CENT, filter_standard, vCoins, setCoinsRet, nValueRet, coin_selection_params_bnb));
 }
 
 // Tests that with the ideal conditions, the coin selector will always be able to find a solution that can pay the target value
@@ -236,7 +235,6 @@ BOOST_AUTO_TEST_CASE(SelectCoins_test)
     CAmount out_value = 0;
     CoinSet out_set;
     CAmount target = 0;
-    bool bnb_used;
 
     // Run this test 100 times
     for (int i = 0; i < 100; ++i)
@@ -262,7 +260,7 @@ BOOST_AUTO_TEST_CASE(SelectCoins_test)
         // Perform selection
         CoinSelectionParams coin_selection_params_knapsack(34, 148, CFeeRate(0), 0);
         CoinSelectionParams coin_selection_params_bnb(34, 148, CFeeRate(0), 0);
-        BOOST_CHECK(testWallet.SelectCoinsMinConf(target, filter_standard, vCoins, out_set, out_value, coin_selection_params_bnb, bnb_used));
+        BOOST_CHECK(testWallet.SelectCoinsMinConf(target, filter_standard, vCoins, out_set, out_value, coin_selection_params_bnb));
         BOOST_CHECK_GE(out_value, target);
     }
 }
