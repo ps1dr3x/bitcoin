@@ -2770,6 +2770,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
     int nBytes;
     {
         std::set<CInputCoin> setCoins;
+        std::vector<CInputCoin> selected_coins;
         LOCK2(cs_main, cs_wallet);
         {
             std::vector<COutput> vAvailableCoins;
@@ -2813,7 +2814,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
             CFeeRate discard_rate = GetDiscardRate(*this, ::feeEstimator);
 
             // Get the fee rate to use effective values in coin selection
-            CFeeRate nFeeRateNeeded = GetMinimumFeeRate(*this, coin_control, ::mempool, ::feeEstimator, &feeCalc);
+            coin_selection_params.effective_fee = GetMinimumFeeRate(*this, coin_control, ::mempool, ::feeEstimator, &feeCalc);
             if (feeCalc.reason == FeeReason::FALLBACK && !m_allow_fallback_fee) {
                 // eventually allow a fallback fee
                 strFailReason = _("Fee estimation failed. Fallbackfee is disabled. Wait a few blocks or enable -fallbackfee.");
@@ -2839,14 +2840,42 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
             CAmount nValueIn = 0;
             setCoins.clear();
             coin_selection_params.change_spend_size = CalculateMaximumSignedInputSize(change_prototype_txout, this);
-            coin_selection_params.effective_fee = nFeeRateNeeded;
+
             if (!SelectCoins(vAvailableCoins, nValueToSelect, setCoins, nValueIn, coin_control, coin_selection_params, bnb_used, nSubtractFeeFromAmount == 0))
             {
                 strFailReason = _("Insufficient funds");
                 return false;
             }
 
-            const CAmount nChange = nValueIn - nValueToSelect;
+            // Shuffle selected coins and fill in final vin
+            txNew.vin.clear();
+            selected_coins.clear();
+            selected_coins.insert(selected_coins.begin(), setCoins.begin(), setCoins.end());
+            std::shuffle(selected_coins.begin(), selected_coins.end(), FastRandomContext());
+
+            // Note how the sequence number is set to non-maxint so that
+            // the nLockTime set above actually works.
+            //
+            // BIP125 defines opt-in RBF as any nSequence < maxint-1, so
+            // we use the highest possible value in that range (maxint-2)
+            // to avoid conflicting with other possible uses of nSequence,
+            // and in the spirit of "smallest possible change from prior
+            // behavior."
+            const uint32_t nSequence = coin_control.m_signal_bip125_rbf.get_value_or(m_signal_rbf) ? MAX_BIP125_RBF_SEQUENCE : (CTxIn::SEQUENCE_FINAL - 1);
+            for (const auto& coin : selected_coins) {
+                txNew.vin.push_back(CTxIn(coin.outpoint, CScript(), nSequence));
+                nFeeRet += coin.fee;
+            }
+
+            // Calculate non-input fees
+            nFeeRet += coin_selection_params.effective_fee.GetFee(coin_selection_params.tx_noinputs_size);
+
+            // Calculate how large a change output's fee would be. If there is change, then we will need to include this in the fee value.
+            // If the change is too small, this amount will also be included in the fee value.
+            nFeeRet += coin_selection_params.effective_fee.GetFee(coin_selection_params.change_output_size);
+
+            // Determine if we need change and how much it will be
+            CAmount nChange = nValueIn - nValueToSelect - (nSubtractFeeFromAmount == 0 ? nFeeRet : 0);
             if (nChange > 0)
             {
                 // Fill a vout to ourself
@@ -2877,23 +2906,16 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
                     txNew.vout.insert(position, newTxOut);
                 }
             } else {
+                // The change value is negative or zero here, so subtract the negative value from nFeeRet because currently it is larger than it should be.
+                nFeeRet += nChange;
                 nChangePosInOut = -1;
-            }
 
-            // Fill vin
-            //
-            // Note how the sequence number is set to non-maxint so that
-            // the nLockTime set above actually works.
-            //
-            // BIP125 defines opt-in RBF as any nSequence < maxint-1, so
-            // we use the highest possible value in that range (maxint-2)
-            // to avoid conflicting with other possible uses of nSequence,
-            // and in the spirit of "smallest possible change from prior
-            // behavior."
-            const uint32_t nSequence = coin_control.signalRbf ? MAX_BIP125_RBF_SEQUENCE : (CTxIn::SEQUENCE_FINAL - 1);
-            for (const auto& coin : setCoins)
-                txNew.vin.push_back(CTxIn(coin.outpoint,CScript(),
-                                          nSequence));
+                if (nSubtractFeeFromAmount != 0) {
+                    // If we are subtracting the fee from the amount, nChange cannot be less than 0 because nFeeRet is not involved.
+                    // We need to decrease nFeeRet by the change output fee so that we do not overpay.
+                    nFeeRet -= coin_selection_params.effective_fee.GetFee(coin_selection_params.change_output_size);
+                }
+            }
 
             // Fill vout
             bool first_output = true;
@@ -2931,24 +2953,6 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
         }
 
         if (nChangePosInOut == -1) reservekey.ReturnKey(); // Return any reserved key if we don't have change
-
-        // Shuffle selected coins and fill in final vin
-        txNew.vin.clear();
-        std::vector<CInputCoin> selected_coins(setCoins.begin(), setCoins.end());
-        std::shuffle(selected_coins.begin(), selected_coins.end(), FastRandomContext());
-
-        // Note how the sequence number is set to non-maxint so that
-        // the nLockTime set above actually works.
-        //
-        // BIP125 defines opt-in RBF as any nSequence < maxint-1, so
-        // we use the highest possible value in that range (maxint-2)
-        // to avoid conflicting with other possible uses of nSequence,
-        // and in the spirit of "smallest possible change from prior
-        // behavior."
-        const uint32_t nSequence = coin_control.m_signal_bip125_rbf.get_value_or(m_signal_rbf) ? MAX_BIP125_RBF_SEQUENCE : (CTxIn::SEQUENCE_FINAL - 1);
-        for (const auto& coin : selected_coins) {
-            txNew.vin.push_back(CTxIn(coin.outpoint, CScript(), nSequence));
-        }
 
         if (sign)
         {
