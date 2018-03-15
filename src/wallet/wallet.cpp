@@ -2511,9 +2511,6 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
     coin_control.ListSelected(vPresetInputs);
     for (const COutPoint& outpoint : vPresetInputs)
     {
-        // For now, don't use BnB if preset inputs are selected. TODO: Enable this later
-        bnb_used = false;
-
         std::map<uint256, CWalletTx>::const_iterator it = mapWallet.find(outpoint.hash);
         if (it != mapWallet.end())
         {
@@ -2521,20 +2518,23 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
             // Clearly invalid input, fail
             if (pcoin->tx->vout.size() <= outpoint.n)
                 return false;
-            // Just to calculate the marginal byte size
-            nValueFromPresetInputs += pcoin->tx->vout[outpoint.n].nValue;
             setPresetCoins.insert(CInputCoin(pcoin->tx, outpoint.n));
         } else
             return false; // TODO: Allow non-wallet inputs
     }
 
-    // remove preset inputs from vCoins
+    // remove preset inputs from vCoins and calculate the value from presets
     for (std::vector<COutput>::iterator it = vCoins.begin(); it != vCoins.end() && coin_control.HasSelected();)
     {
-        if (setPresetCoins.count(CInputCoin(it->tx->tx, it->i)))
+        std::set<CInputCoin>::iterator coin = setPresetCoins.find(CInputCoin(it->tx->tx, it->i));
+        if (coin != setPresetCoins.end()) {
+            // Sum the effective values of the presets
+            nValueFromPresetInputs -= (coin->txout.nValue - (it->nInputBytes < 0 ? 0 : coin_selection_params.effective_fee.GetFee(it->nInputBytes)));
             it = vCoins.erase(it);
-        else
+        }
+        else {
             ++it;
+        }
     }
 
     size_t nMaxChainLength = std::min(gArgs.GetArg("-limitancestorcount", DEFAULT_ANCESTOR_LIMIT), gArgs.GetArg("-limitdescendantcount", DEFAULT_DESCENDANT_LIMIT));
