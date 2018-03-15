@@ -2805,7 +2805,13 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
                 return false;
             }
 
-            const CAmount nChange = nValueIn - nValueToSelect;
+            // Calculate the fees paid
+            for (auto it = setCoins.begin(); it != setCoins.end(); ++it) {
+                nFeeRet += it->fee;
+            }
+            nFeeRet += coin_selection_params.effective_fee.GetFee(coin_selection_params.tx_noinputs_size);
+
+            const CAmount nChange = nValueIn - nValueToSelect - nFeeRet;
             if (nChange > 0)
             {
                 // Fill a vout to ourself
