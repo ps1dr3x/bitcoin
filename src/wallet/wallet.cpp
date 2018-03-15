@@ -2820,7 +2820,6 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
             nChangePosInOut = nChangePosRequest;
             txNew.vin.clear();
             txNew.vout.clear();
-            bool fFirst = true;
 
             CAmount nValueToSelect = nValue;
             // Calculate the size of things that aren't inputs
@@ -2828,35 +2827,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
             for (const auto& recipient : vecSend)
             {
                 CTxOut txout(recipient.nAmount, recipient.scriptPubKey);
-
-                if (recipient.fSubtractFeeFromAmount)
-                {
-                    assert(nSubtractFeeFromAmount != 0);
-                    txout.nValue -= nFeeRet / nSubtractFeeFromAmount; // Subtract fee equally from each selected recipient
-
-                    if (fFirst) // first receiver pays the remainder not divisible by output count
-                    {
-                        fFirst = false;
-                        txout.nValue -= nFeeRet % nSubtractFeeFromAmount;
-                    }
-                }
-                // Include the fee cost for outputs
                 coin_selection_params.tx_noinputs_size += ::GetSerializeSize(txout, SER_NETWORK, PROTOCOL_VERSION);
-
-                if (IsDust(txout, ::dustRelayFee))
-                {
-                    if (recipient.fSubtractFeeFromAmount && nFeeRet > 0)
-                    {
-                        if (txout.nValue < 0)
-                            strFailReason = _("The transaction amount is too small to pay the fee");
-                        else
-                            strFailReason = _("The transaction amount is too small to send after the fee has been deducted");
-                    }
-                    else
-                        strFailReason = _("Transaction amount too small");
-                    return false;
-                }
-                txNew.vout.push_back(txout);
             }
 
             // Choose coins to use
@@ -2919,6 +2890,40 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
             for (const auto& coin : setCoins)
                 txNew.vin.push_back(CTxIn(coin.outpoint,CScript(),
                                           nSequence));
+
+            // Fill vout
+            bool first_output = true;
+            for (const auto& recipient : vecSend)
+            {
+                CTxOut txout(recipient.nAmount, recipient.scriptPubKey);
+
+                if (recipient.fSubtractFeeFromAmount)
+                {
+                    assert(nSubtractFeeFromAmount != 0);
+                    txout.nValue -= nFeeRet / nSubtractFeeFromAmount; // Subtract fee equally from each selected recipient
+
+                    if (first_output) // first receiver pays the remainder not divisible by output count
+                    {
+                        first_output = false;
+                        txout.nValue -= nFeeRet % nSubtractFeeFromAmount;
+                    }
+                }
+
+                if (IsDust(txout, ::dustRelayFee))
+                {
+                    if (recipient.fSubtractFeeFromAmount && nFeeRet > 0)
+                    {
+                        if (txout.nValue < 0)
+                            strFailReason = _("The transaction amount is too small to pay the fee");
+                        else
+                            strFailReason = _("The transaction amount is too small to send after the fee has been deducted");
+                    }
+                    else
+                        strFailReason = _("Transaction amount too small");
+                    return false;
+                }
+                txNew.vout.push_back(txout);
+            }
         }
 
         if (nChangePosInOut == -1) reservekey.ReturnKey(); // Return any reserved key if we don't have change
