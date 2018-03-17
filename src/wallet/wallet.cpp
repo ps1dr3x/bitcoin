@@ -2767,7 +2767,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
             CFeeRate discard_rate = GetDiscardRate(::feeEstimator);
 
             // Get the fee rate to use effective values in coin selection
-            CFeeRate nFeeRateNeeded = GetMinimumFeeRate(coin_control, ::mempool, ::feeEstimator, &feeCalc);
+            coin_selection_params.effective_fee = GetMinimumFeeRate(coin_control, ::mempool, ::feeEstimator, &feeCalc);
 
             nFeeRet = 0;
             CAmount nValueIn = 0;
@@ -2792,7 +2792,6 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
             nValueIn = 0;
             setCoins.clear();
             coin_selection_params.change_spend_size = CalculateMaximumSignedInputSize(change_prototype_txout, this);
-            coin_selection_params.effective_fee = nFeeRateNeeded;
             if (!SelectCoins(vAvailableCoins, nValueToSelect, setCoins, nValueIn, coin_control, coin_selection_params, nSubtractFeeFromAmount == 0))
             {
                 strFailReason = _("Insufficient funds");
@@ -2805,6 +2804,10 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
             }
             nFeeRet += coin_selection_params.effective_fee.GetFee(coin_selection_params.tx_noinputs_size);
 
+            // Calculate how large a change output's fee would be
+            CTxOut dummy_txout(0, scriptChange); // For size calculation only
+            nFeeRet += coin_selection_params.effective_fee.GetFee(::GetSerializeSize(dummy_txout, SER_NETWORK, PROTOCOL_VERSION));
+
             const CAmount nChange = nValueIn - nValueToSelect - nFeeRet;
             if (nChange > 0)
             {
@@ -2813,7 +2816,6 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
 
                 // Never create dust outputs; if we would, just
                 // add the dust to the fee.
-                // The nChange when BnB is used is always going to go to fees.
                 if (IsDust(newTxOut, discard_rate))
                 {
                     nChangePosInOut = -1;
