@@ -2773,6 +2773,11 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
 
             // Get the fee rate to use effective values in coin selection
             coin_selection_params.effective_fee = GetMinimumFeeRate(coin_control, ::mempool, ::feeEstimator, &feeCalc);
+            if (feeCalc.reason == FeeReason::FALLBACK && !g_wallet_allow_fallback_fee) {
+                // eventually allow a fallback fee
+                strFailReason = _("Fee estimation failed. Fallbackfee is disabled. Wait a few blocks or enable -fallbackfee.");
+                return false;
+            }
 
             nFeeRet = 0;
             CAmount nValueIn = 0;
