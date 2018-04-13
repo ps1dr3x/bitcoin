@@ -2671,6 +2671,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
                                 int& nChangePosInOut, std::string& strFailReason, const CCoinControl& coin_control, bool sign)
 {
     CAmount nValue = 0;
+    nFeeRet = 0;
     int nChangePosRequest = nChangePosInOut;
     unsigned int nSubtractFeeFromAmount = 0;
     for (const auto& recipient : vecSend)
@@ -2779,17 +2780,12 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
                 return false;
             }
 
-            nFeeRet = 0;
-            CAmount nValueIn = 0;
 
             nChangePosInOut = nChangePosRequest;
             txNew.vin.clear();
             txNew.vout.clear();
 
             CAmount nValueToSelect = nValue;
-            if (nSubtractFeeFromAmount == 0)
-                nValueToSelect += nFeeRet;
-
             // Calculate the size of things that aren't inputs
             coin_selection_params.tx_noinputs_size = 11; // Static vsize overhead + outputs vsize. 4 nVersion, 4 nLocktime, 1 input count, 1 output count, 1 witness overhead (dummy, flag, stack size)
             for (const auto& recipient : vecSend)
@@ -2799,7 +2795,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
             }
 
             // Choose coins to use
-            nValueIn = 0;
+            CAmount nValueIn = 0;
             setCoins.clear();
             coin_selection_params.change_spend_size = CalculateMaximumSignedInputSize(change_prototype_txout, this);
             if (!SelectCoins(vAvailableCoins, nValueToSelect, setCoins, nValueIn, coin_control, coin_selection_params, nSubtractFeeFromAmount == 0))
