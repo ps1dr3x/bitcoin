@@ -2496,7 +2496,10 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
             if (!out.fSpendable)
                  continue;
             nValueRet += out.tx->tx->vout[out.i].nValue;
-            setCoinsRet.insert(CInputCoin(out.tx->tx, out.i));
+            CInputCoin coin(out.tx->tx, out.i);
+            coin.effective_value = coin.txout.nValue - (out.nInputBytes < 0 || !use_effective ? 0 : coin_selection_params.effective_fee.GetFee(out.nInputBytes));
+            coin.fee = out.nInputBytes < 0 ? 0 : coin_selection_params.effective_fee.GetFee(out.nInputBytes);
+            setCoinsRet.insert(coin);
         }
         return (nValueRet >= nTargetValue);
     }
@@ -2504,6 +2507,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
     // calculate value from preset inputs and store them
     std::set<CInputCoin> setPresetCoins;
     CAmount nValueFromPresetInputs = 0;
+    CAmount effective_value_from_presets = 0;
 
     std::vector<COutPoint> vPresetInputs;
     coin_control.ListSelected(vPresetInputs);
@@ -2521,31 +2525,32 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
             return false; // TODO: Allow non-wallet inputs
     }
 
-    // remove preset inputs from vCoins and calculate the value from presets
+    // remove preset inputs from vCoins and set fee and effective value for preset coin
     for (std::vector<COutput>::iterator it = vCoins.begin(); it != vCoins.end() && coin_control.HasSelected();)
     {
-        std::set<CInputCoin>::iterator coin = setPresetCoins.find(CInputCoin(it->tx->tx, it->i));
-        if (coin != setPresetCoins.end()) {
-            // Sum the effective values of the presets
-            nValueFromPresetInputs -= (coin->txout.nValue - (it->nInputBytes < 0 ? 0 : coin_selection_params.effective_fee.GetFee(it->nInputBytes)));
+        auto preset_it = setPresetCoins.find(CInputCoin(it->tx->tx, it->i));
+        if (preset_it != setPresetCoins.end()) {
+            preset_it->fee = it->nInputBytes < 0 ? 0 : coin_selection_params.effective_fee.GetFee(it->nInputBytes);
+            preset_it->effective_value = preset_it->txout.nValue - (use_effective ? preset_it->fee : 0);
+            nValueFromPresetInputs += preset_it->txout.nValue;
+            effective_value_from_presets += preset_it->effective_value;
             it = vCoins.erase(it);
         }
-        else {
+        else
             ++it;
-        }
     }
 
     size_t nMaxChainLength = std::min(gArgs.GetArg("-limitancestorcount", DEFAULT_ANCESTOR_LIMIT), gArgs.GetArg("-limitdescendantcount", DEFAULT_DESCENDANT_LIMIT));
     bool fRejectLongChains = gArgs.GetBoolArg("-walletrejectlongchains", DEFAULT_WALLET_REJECT_LONG_CHAINS);
 
-    bool res = nTargetValue <= nValueFromPresetInputs ||
-        SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, CoinEligibilityFilter(1, 6, 0), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective) ||
-        SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, CoinEligibilityFilter(1, 1, 0), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective) ||
-        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, CoinEligibilityFilter(0, 1, 2), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
-        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, CoinEligibilityFilter(0, 1, std::min((size_t)4, nMaxChainLength/3)), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
-        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, CoinEligibilityFilter(0, 1, nMaxChainLength/2), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
-        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, CoinEligibilityFilter(0, 1, nMaxChainLength), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
-        (bSpendZeroConfChange && !fRejectLongChains && SelectCoinsMinConf(nTargetValue - nValueFromPresetInputs, CoinEligibilityFilter(0, 1, std::numeric_limits<uint64_t>::max()), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective));
+    bool res = (nTargetValue <= effective_value_from_presets && !vPresetInputs.empty()) ||
+        SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(1, 6, 0), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective) ||
+        SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(1, 1, 0), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective) ||
+        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, 2), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
+        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, std::min((size_t)4, nMaxChainLength/3)), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
+        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, nMaxChainLength/2), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
+        (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, nMaxChainLength), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
+        (bSpendZeroConfChange && !fRejectLongChains && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, std::numeric_limits<uint64_t>::max()), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective));
 
     // because SelectCoinsMinConf clears the setCoinsRet, we now add the possible inputs to the coinset
     setCoinsRet.insert(setPresetCoins.begin(), setPresetCoins.end());
