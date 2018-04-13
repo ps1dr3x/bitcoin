@@ -2804,40 +2804,26 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
             }
             nFeeRet += coin_selection_params.effective_fee.GetFee(coin_selection_params.tx_noinputs_size);
 
-            // Calculate how large a change output's fee would be
-            CTxOut dummy_txout(0, scriptChange); // For size calculation only
-            nFeeRet += coin_selection_params.effective_fee.GetFee(::GetSerializeSize(dummy_txout, SER_NETWORK, PROTOCOL_VERSION));
+            // Calculate how large a change output's fee would be. If there is change, then we will need to include this in the fee value.
+            // If the change is too small, this amount will also be included in the fee value.
+            nFeeRet += coin_selection_params.effective_fee.GetFee(coin_selection_params.change_output_size);
 
-            const CAmount nChange = nValueIn - nValueToSelect - nFeeRet;
+            // Determine if we need change and how much it will be
+            CAmount nChange = nValueIn - nValueToSelect - (nSubtractFeeFromAmount == 0 ? nFeeRet : 0);
             if (nChange > 0)
             {
-                // Fill a vout to ourself
-                CTxOut newTxOut(nChange, scriptChange);
-
                 // Never create dust outputs; if we would, just
                 // add the dust to the fee.
+                CTxOut newTxOut(nChange, scriptChange);
                 if (IsDust(newTxOut, discard_rate))
                 {
                     nChangePosInOut = -1;
                     nFeeRet += nChange;
-                }
-                else
-                {
-                    if (nChangePosInOut == -1)
-                    {
-                        // Insert change txn at random position:
-                        nChangePosInOut = GetRandInt(txNew.vout.size()+1);
-                    }
-                    else if ((unsigned int)nChangePosInOut > txNew.vout.size())
-                    {
-                        strFailReason = _("Change index out of range");
-                        return false;
-                    }
-
-                    std::vector<CTxOut>::iterator position = txNew.vout.begin()+nChangePosInOut;
-                    txNew.vout.insert(position, newTxOut);
+                    nChange = 0;
                 }
             } else {
+                // The change value is negative or zero here, so subtract the negative value from nFeeRet because currently it is larger than it should be.
+                nFeeRet += nChange;
                 nChangePosInOut = -1;
             }
 
@@ -2888,6 +2874,25 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CTransac
                     return false;
                 }
                 txNew.vout.push_back(txout);
+            }
+
+            // Fill change output
+            if (nChange > 0) {
+                // Fill a vout to ourself
+                CTxOut newTxOut(nChange, scriptChange);
+                if (nChangePosInOut == -1)
+                {
+                    // Insert change txn at random position:
+                    nChangePosInOut = GetRandInt(txNew.vout.size()+1);
+                }
+                else if ((unsigned int)nChangePosInOut > txNew.vout.size())
+                {
+                    strFailReason = _("Change index out of range");
+                    return false;
+                }
+
+                std::vector<CTxOut>::iterator position = txNew.vout.begin()+nChangePosInOut;
+                txNew.vout.insert(position, newTxOut);
             }
         }
 
