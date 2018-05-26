@@ -33,6 +33,23 @@ bool TransactionSignatureCreator::CreateSig(const SigningProvider& provider, std
     return true;
 }
 
+bool PSBTSignatureCreator::CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& address, const CScript& scriptCode, SigVersion sigversion) const
+{
+    CPubKey pubkey;
+    provider.GetPubKey(address, pubkey);
+    auto sig_it = sigs->find(pubkey);
+    if (sig_it != sigs->end()) {
+        vchSig = sig_it->second;
+        return true;
+    }
+
+    if (TransactionSignatureCreator::CreateSig(provider, vchSig, address, scriptCode, sigversion)) {
+        sigs->emplace(pubkey, vchSig);
+        return true;
+    }
+    return false;
+}
+
 static bool Sign1(const SigningProvider& provider, const CKeyID& address, const BaseSignatureCreator& creator, const CScript& scriptCode, std::vector<valtype>& ret, SigVersion sigversion)
 {
     std::vector<unsigned char> vchSig;
@@ -119,82 +136,6 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
             return true;
         }
         return false;
-
-    default:
-        return false;
-    }
-}
-
-
-// SignStep but returning the scriptsig/witnesscript stack, public keys used, and signatures, completely separately.
-static bool SignSigsOnly(const SigningProvider& provider, const BaseSignatureCreator& creator, const CScript& scriptPubKey,
-                     std::vector<valtype>& sig_ret, txnouttype& whichTypeRet, SigVersion sigversion,
-                     std::vector<CPubKey>& key_ret, std::vector<valtype>& script_ret,
-                     std::map<uint160, CScript>& redeem_scripts, std::map<uint256, CScript>& witness_scripts)
-{
-    CScript scriptRet;
-    uint160 h160;
-    sig_ret.clear();
-    key_ret.clear();
-    script_ret.clear();
-
-    std::vector<valtype> vSolutions;
-    if (!Solver(scriptPubKey, whichTypeRet, vSolutions))
-        return false;
-
-    CKeyID keyID;
-    switch (whichTypeRet)
-    {
-    case TX_NONSTANDARD:
-    case TX_NULL_DATA:
-        return false;
-    case TX_PUBKEY:
-        keyID = CPubKey(vSolutions[0]).GetID();
-        key_ret.push_back(CPubKey(vSolutions[0]));
-        if (!Sign1(provider, keyID, creator, scriptPubKey, sig_ret, sigversion)) {
-            return false;
-        }
-        return true;
-    case TX_PUBKEYHASH:
-        keyID = CKeyID(uint160(vSolutions[0]));
-        if (!Sign1(provider, keyID, creator, scriptPubKey, sig_ret, sigversion))
-            return false;
-        else
-        {
-            script_ret = sig_ret;
-            CPubKey vch;
-            provider.GetPubKey(keyID, vch);
-            key_ret.push_back(vch);
-            script_ret.push_back(ToByteVector(vch));
-        }
-        return true;
-    case TX_SCRIPTHASH: {
-            auto redeem_script_it = redeem_scripts.find(uint160(vSolutions[0]));
-            if (redeem_script_it != redeem_scripts.end()) {
-                script_ret.push_back(std::vector<unsigned char>(redeem_script_it->second.begin(), redeem_script_it->second.end()));
-                return true;
-            }
-            return false;
-        }
-
-    case TX_MULTISIG:
-        script_ret.push_back(valtype()); // workaround CHECKMULTISIG bug
-        SignN(provider, vSolutions, creator, scriptPubKey, sig_ret, sigversion, key_ret);
-        script_ret.insert(script_ret.end(), sig_ret.begin(), sig_ret.end());
-        return true;
-
-    case TX_WITNESS_V0_KEYHASH:
-        script_ret.push_back(vSolutions[0]);
-        return true;
-
-    case TX_WITNESS_V0_SCRIPTHASH: {
-            auto witness_script_it = witness_scripts.find(uint256(vSolutions[0]));
-            if (witness_script_it != witness_scripts.end()) {
-                script_ret.push_back(std::vector<unsigned char>(witness_script_it->second.begin(), witness_script_it->second.end()));
-                return true;
-            }
-            return false;
-        }
 
     default:
         return false;
@@ -384,11 +325,82 @@ struct Stacks
 };
 }
 
-// Iterates through all inputs of the partially signed transaction and just produces signatures for what it can and adds them to the psbt partial sigs
-bool SignPartiallySignedTransaction(PartiallySignedTransaction& psbt, const SigningProvider* provider, int nHashType)
+bool PSBTSigningProvider::GetCScript(const CScriptID &scriptid, CScript& script) const
 {
+    for (SigningProvider* provider : providers) {
+        if (provider->GetCScript(scriptid, script)) {
+            return true;
+        }
+    }
+    // Look for scripts in redeem_scripts
+    auto mi = psbt->redeem_scripts.find(scriptid);
+    if (mi != psbt->redeem_scripts.end())
+    {
+        script = (*mi).second;
+        return true;
+    }
+    // Look for scripts in witness_scripts
+    for (auto& it : psbt->witness_scripts) {
+        if (CScriptID(it.second) == scriptid) {
+            script = it.second;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PSBTSigningProvider::GetPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const
+{
+    for (SigningProvider* provider : providers) {
+        if (provider->GetPubKey(address, vchPubKeyOut)) {
+            return true;
+        }
+    }
+    // Look for pubkey in hd_keypaths
+    for (auto& it : psbt->hd_keypaths) {
+        if (it.first.GetID() == address) {
+            vchPubKeyOut = it.first;
+            return true;
+        }
+    }
+    // Look for pubkey in all partial sigs
+    for (auto& in : psbt->inputs) {
+        for (auto& it : in.partial_sigs) {
+            if (it.first.GetID() == address) {
+                vchPubKeyOut = it.first;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool PSBTSigningProvider::GetKey(const CKeyID &address, CKey& key) const
+{
+    for (SigningProvider* provider : providers) {
+        if (provider->GetKey(address, key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void PSBTSigningProvider::AddSigningProvider(SigningProvider* provider)
+{
+    if (provider) {
+        providers.push_back(provider);
+    }
+}
+
+// Iterates through all inputs of the partially signed transaction and just produces signatures for what it can and adds them to the psbt partial sigs
+bool SignPartiallySignedTransaction(PartiallySignedTransaction& psbt, SigningProvider* provider_in, int nHashType, bool finalize)
+{
+    // Create the psbt signing provider
+    PSBTSigningProvider provider(&psbt);
+    provider.AddSigningProvider(provider_in);
+
     CMutableTransaction mtx = psbt.tx;
-    bool solved = true;
+    bool solved = finalize;
     for (unsigned int i = 0; i < mtx.vin.size(); ++i) {
         CTxIn& txin = mtx.vin[i];
         PartiallySignedInput psbt_in = psbt.inputs[i];
@@ -410,195 +422,19 @@ bool SignPartiallySignedTransaction(PartiallySignedTransaction& psbt, const Sign
         CScript script = utxo.scriptPubKey;
         const CAmount& amount = utxo.nValue;
 
-        MutableTransactionSignatureCreator creator(&mtx, i, amount, nHashType);
-
-        std::vector<valtype> sig_ret;
-        std::vector<valtype> script_ret; // Only for the signer to put redemscripts to be used later.
-        std::vector<CPubKey> key_ret;
-        txnouttype whichType;
-        solved = SignSigsOnly(*provider, creator, script, sig_ret, whichType, SigVersion::BASE, key_ret, script_ret, psbt.redeem_scripts, psbt.witness_scripts);
-
-        if (solved && whichType == TX_SCRIPTHASH)
-        {
-            script = CScript(script_ret[0].begin(), script_ret[0].end());
-            solved = solved && SignSigsOnly(*provider, creator, script, sig_ret, whichType, SigVersion::BASE, key_ret, script_ret, psbt.redeem_scripts, psbt.witness_scripts) && whichType != TX_SCRIPTHASH;
-        }
-
-        if (solved && whichType == TX_WITNESS_V0_KEYHASH)
-        {
-            CScript witnessscript;
-            witnessscript << OP_DUP << OP_HASH160 << ToByteVector(script_ret[0]) << OP_EQUALVERIFY << OP_CHECKSIG;
-            txnouttype subType;
-            solved = solved && SignSigsOnly(*provider, creator, witnessscript, sig_ret, subType, SigVersion::WITNESS_V0, key_ret, script_ret, psbt.redeem_scripts, psbt.witness_scripts);
-        }
-        else if (solved && whichType == TX_WITNESS_V0_SCRIPTHASH)
-        {
-            CScript witnessscript(script_ret[0].begin(), script_ret[0].end());
-            txnouttype subType;
-            solved = solved && SignSigsOnly(*provider, creator, witnessscript, sig_ret, subType, SigVersion::WITNESS_V0, key_ret, script_ret, psbt.redeem_scripts, psbt.witness_scripts) && subType != TX_SCRIPTHASH && subType != TX_WITNESS_V0_SCRIPTHASH && subType != TX_WITNESS_V0_KEYHASH;
-        }
-
-        // Add to partial sigs
-        if (solved) {
-            for (unsigned int j = 0; j < key_ret.size(); ++j) {
-                psbt.inputs[i].partial_sigs.emplace(key_ret[j], sig_ret[j]);
-            }
-        }
-    }
-
-    return solved;
-}
-
-// Finalizes the inputs that can be finalized
-// Returns true for final tx, false for non final
-bool FinalizePartialTransaction(PartiallySignedTransaction& psbt)
-{
-    CMutableTransaction mtx = psbt.tx;
-    bool complete = true;
-    const CTransaction const_tx(mtx);
-    for (unsigned int i = 0; i < mtx.vin.size(); ++i) {
-        CTxIn& txin = mtx.vin[i];
-        PartiallySignedInput psbt_in = psbt.inputs[i];
-
-        // Find the non witness utxo first
-        CTxOut utxo;
-        if (psbt_in.non_witness_utxo) {
-            utxo = psbt_in.non_witness_utxo->vout[txin.prevout.n];
-        }
-        // Now find the witness utxo if the non witness doesn't exist
-        else if (!psbt_in.witness_utxo.IsNull()) {
-            utxo = psbt_in.witness_utxo;
-        }
-        // If there is no nonwitness or witness utxo, then this input is fully signed and we are done here
-        else {
-            continue;
-        }
-
-        // Combine partial sigs and create full scriptsig
-        std::vector<valtype> vSolutions;
-        CScript spk = utxo.scriptPubKey;
-        bool loop = true;
-        bool P2SH = false;
-        bool witness = false;
-        bool WSH = false;
-        CScript redeemscript;
-        CScript witnessscript;
+        PSBTSignatureCreator creator(&psbt.inputs[i].partial_sigs, &mtx, i, amount, nHashType);
         SignatureData sigdata;
-        std::vector<valtype> script_ret; // Only for the signer to put redemscripts to be used later.
-        txnouttype whichType;
-        while (loop) {
-            loop = false;
-            uint160 h160;
-            CScript script_ret2;
-            CKeyID keyID;
-            bool found_pk = false;
-            if (Solver(spk, whichType, vSolutions)) {
-                switch (whichType)
-                {
-                case TX_PUBKEY:
-                    {
-                        auto sig_it = psbt.inputs[i].partial_sigs.find(CPubKey(vSolutions[0]));
-                        if (sig_it != psbt.inputs[i].partial_sigs.end()) {
-                            script_ret.push_back(sig_it->second);
-                        }
-                    }
-                    break;
-                case TX_WITNESS_V0_KEYHASH:
-                    witness = true;
-                case TX_PUBKEYHASH:
-                    keyID = CKeyID(uint160(vSolutions[0]));
-                    // Go through each of the pubkeys in partial_sigs and find the one that matches
-                    for (auto& pair : psbt.inputs[i].partial_sigs) {
-                        if (pair.first.GetID() == keyID) {
-                            found_pk = true;
-                            script_ret.push_back(pair.second);
-                            script_ret.push_back(ToByteVector(pair.first));
-                            break;
-                        }
-                    }
-                    if (!found_pk) {
-                        complete = false;
-                    }
-                    break;
-                case TX_SCRIPTHASH:
-                    P2SH = true;
-                    {
-                        auto redeem_script_it = psbt.redeem_scripts.find(uint160(vSolutions[0]));
-                        if (redeem_script_it != psbt.redeem_scripts.end()) {
-                            spk = redeemscript = redeem_script_it->second;
-                        } else {
-                            break;
-                        }
-                    }
-                    loop = true;
-                    break;
-                case TX_MULTISIG: {
-                    script_ret.push_back(valtype()); // workaround CHECKMULTISIG bug
-                    SignatureData dummy_sigdata;
-                    dummy_sigdata.scriptSig = spk;
-                    Stacks redeemscript_stack(dummy_sigdata);
-                    unsigned int nSigsRequired = redeemscript_stack.script.front()[0];
-                    unsigned int nSigsHave = 0;
-                    unsigned int nPubKeys = redeemscript_stack.script.size()-2;
-                    for (unsigned int j = 0; j < nPubKeys && nSigsHave < nSigsRequired; ++j)
-                    {
-                        auto sig_it = psbt.inputs[i].partial_sigs.find(CPubKey(redeemscript_stack.script[j + 1]));
-                        if (sig_it != psbt.inputs[i].partial_sigs.end()) {
-                            script_ret.push_back(sig_it->second);
-                            ++nSigsHave;
-                        }
-                    }
-                    break;
-                }
-                case TX_WITNESS_V0_SCRIPTHASH:
-                    witness = true;
-                    WSH = true;
-                    {
-                        auto witness_script_it = psbt.witness_scripts.find(uint256(vSolutions[0]));
-                        if (witness_script_it != psbt.witness_scripts.end()) {
-                            spk = witnessscript = witness_script_it->second;
-                        } else {
-                            break;
-                        }
-                    }
-                    loop = true;
-                    break;
-
-                case TX_NONSTANDARD:
-                case TX_NULL_DATA:
-                default:
-                    break;
-                }
-            }
-        }
-
-        if (witness) {
-            if (WSH) {
-                script_ret.push_back(std::vector<unsigned char>(witnessscript.begin(), witnessscript.end()));
-            }
-            sigdata.scriptWitness.stack = script_ret;
-            script_ret.clear();
-        }
-        if (P2SH) {
-            script_ret.push_back(std::vector<unsigned char>(redeemscript.begin(), redeemscript.end()));
-        }
-        sigdata.scriptSig = PushAll(script_ret);
-
-        // Test solution
-        ScriptError serror = SCRIPT_ERR_OK;
-        const CAmount& amount = utxo.nValue;
-        if (VerifyScript(sigdata.scriptSig, utxo.scriptPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, TransactionSignatureChecker(&const_tx, i, amount), &serror)) {
+        bool sig_complete = ProduceSignature(provider, creator, script, sigdata);
+        if (sig_complete && finalize) {
             // signatures are complete
             // Add scriptsig/scriptwitness to transaction
             psbt.tx.vin[i].scriptSig = sigdata.scriptSig;
             psbt.tx.vin[i].scriptWitness = sigdata.scriptWitness;
         }
-        else {
-            complete = false;
-        }
+        solved &= sig_complete;
     }
 
-    return complete;
+    return solved;
 }
 
 static Stacks CombineSignatures(const CScript& scriptPubKey, const BaseSignatureChecker& checker,
