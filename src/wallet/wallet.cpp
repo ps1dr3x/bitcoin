@@ -2480,7 +2480,7 @@ bool CWallet::OutputEligibleForSpending(const COutput& output, const CoinEligibi
 
 bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<COutput> vCoins,
                                  std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CoinSelectionParams& coin_selection_params,
-                                 bool use_effective) const
+                                 bool use_effective, bool use_bnb) const
 {
     setCoinsRet.clear();
     nValueRet = 0;
@@ -2515,7 +2515,11 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     CAmount not_input_fees = use_effective ? coin_selection_params.effective_fee.GetFee(coin_selection_params.tx_noinputs_size) : 0;
 
     // Start with BnB. If that fails, use SRD
-    return SelectCoinsBnB(utxo_pool, nTargetValue, cost_of_change, setCoinsRet, nValueRet, not_input_fees) || SingleRandomDraw(nTargetValue, utxo_pool, setCoinsRet, nValueRet, not_input_fees);
+    if (use_bnb) {
+        return SelectCoinsBnB(utxo_pool, nTargetValue, cost_of_change, setCoinsRet, nValueRet, not_input_fees);
+    } else {
+        return SingleRandomDraw(nTargetValue, utxo_pool, setCoinsRet, nValueRet, not_input_fees);
+    }
 }
 
 bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet,
@@ -2587,7 +2591,14 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
         (m_spend_zero_conf_change && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, std::min((size_t)4, max_ancestors/3), std::min((size_t)4, max_descendants/3)), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
         (m_spend_zero_conf_change && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, max_ancestors/2, max_descendants/2), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
         (m_spend_zero_conf_change && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, max_ancestors-1, max_descendants-1), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
-        (m_spend_zero_conf_change && !fRejectLongChains && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, std::numeric_limits<uint64_t>::max()), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective));
+        (m_spend_zero_conf_change && !fRejectLongChains && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, std::numeric_limits<uint64_t>::max()), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective)) ||
+        SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(1, 6, 0), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective, false) ||
+        SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(1, 1, 0), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective, false) ||
+        (m_spend_zero_conf_change && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, 2), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective, false)) ||
+        (m_spend_zero_conf_change && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, std::min((size_t)4, max_ancestors/3), std::min((size_t)4, max_descendants/3)), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective, false)) ||
+        (m_spend_zero_conf_change && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, max_ancestors/2, max_descendants/2), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective, false)) ||
+        (m_spend_zero_conf_change && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, max_ancestors-1, max_descendants-1), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective, false)) ||
+        (m_spend_zero_conf_change && !fRejectLongChains && SelectCoinsMinConf(nTargetValue - effective_value_from_presets, CoinEligibilityFilter(0, 1, std::numeric_limits<uint64_t>::max()), vCoins, setCoinsRet, nValueRet, coin_selection_params, use_effective, false));
 
     // because SelectCoinsMinConf clears the setCoinsRet, we now add the possible inputs to the coinset
     setCoinsRet.insert(setPresetCoins.begin(), setPresetCoins.end());

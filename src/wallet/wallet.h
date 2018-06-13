@@ -852,7 +852,7 @@ public:
      * assembled
      */
     bool SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<COutput> vCoins,
-        std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CoinSelectionParams& coin_selection_params, bool use_effective = true) const;
+        std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CoinSelectionParams& coin_selection_params, bool use_effective = true, bool use_bnb = true) const;
 
     bool IsSpent(const uint256& hash, unsigned int n) const;
 
