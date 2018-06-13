@@ -2496,6 +2496,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
 
     // Filter by the min conf specs and add to utxo_pool and calculate effective value
     std::vector<CInputCoin> utxo_pool;
+    std::vector<CInputCoin> small_utxos;
     for (const COutput &output : vCoins)
     {
         if (!OutputEligibleForSpending(output, eligibility_filter))
@@ -2508,6 +2509,9 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
             coin.fee = output.nInputBytes < 0 ? 0 : coin_selection_params.effective_fee.GetFee(output.nInputBytes);
             coin.long_term_fee = output.nInputBytes < 0 ? 0 : long_term_feerate.GetFee(output.nInputBytes);
             utxo_pool.push_back(coin);
+            if (coin.effective_value < nTargetValue) {
+                small_utxos.push_back(coin);
+            }
         }
     }
     // Calculate the fees for things that aren't inputs
@@ -2518,7 +2522,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     if (use_bnb) {
         return SelectCoinsBnB(utxo_pool, nTargetValue, cost_of_change, setCoinsRet, nValueRet, not_input_fees);
     } else {
-        return SingleRandomDraw(nTargetValue, utxo_pool, setCoinsRet, nValueRet, not_input_fees);
+        return SingleRandomDraw(nTargetValue, small_utxos, setCoinsRet, nValueRet, not_input_fees) || SingleRandomDraw(nTargetValue, utxo_pool, setCoinsRet, nValueRet, not_input_fees);
     }
 }
 
