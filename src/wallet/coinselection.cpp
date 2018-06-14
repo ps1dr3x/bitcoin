@@ -178,9 +178,6 @@ bool SingleRandomDraw(const CAmount& recipient_value, std::vector<CInputCoin>& u
         std::swap(utxo_pool[i], utxo_pool[pos]);
         const CInputCoin& utxo = utxo_pool[i];
 
-        // Assert that this utxo is not negative. It should never be negative, effective value calculation should have removed it
-        assert(utxo.effective_value > 0);
-
         // Add this coin
         curr_value += utxo.effective_value;
         value_ret += utxo.txout.nValue;

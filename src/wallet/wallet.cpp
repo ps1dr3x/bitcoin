@@ -2496,6 +2496,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
 
     // Filter by the min conf specs and add to utxo_pool and calculate effective value
     std::vector<CInputCoin> utxo_pool;
+    std::vector<CInputCoin> all_utxo;
     for (const COutput &output : vCoins)
     {
         if (!OutputEligibleForSpending(output, eligibility_filter))
@@ -2503,12 +2504,13 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
 
         CInputCoin coin(output.tx->tx, output.i);
         coin.effective_value = coin.txout.nValue - ((output.nInputBytes < 0 || !use_effective) ? 0 : coin_selection_params.effective_fee.GetFee(output.nInputBytes));
+        coin.fee = output.nInputBytes < 0 ? 0 : coin_selection_params.effective_fee.GetFee(output.nInputBytes);
         // Only include outputs that are positive effective value (i.e. not dust)
         if (coin.effective_value > 0) {
-            coin.fee = output.nInputBytes < 0 ? 0 : coin_selection_params.effective_fee.GetFee(output.nInputBytes);
             coin.long_term_fee = output.nInputBytes < 0 ? 0 : long_term_feerate.GetFee(output.nInputBytes);
             utxo_pool.push_back(coin);
         }
+        all_utxo.push_back(coin);
     }
     // Calculate the fees for things that aren't inputs
     // The only situation we are not using effective values is when we are subtracting the fee from the outputs, so don't calculate not_input_fees in that case
@@ -2518,7 +2520,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     if (use_bnb) {
         return SelectCoinsBnB(utxo_pool, nTargetValue, cost_of_change, setCoinsRet, nValueRet, not_input_fees);
     } else {
-        return SingleRandomDraw(nTargetValue, utxo_pool, setCoinsRet, nValueRet, not_input_fees);
+        return SingleRandomDraw(nTargetValue, all_utxo, setCoinsRet, nValueRet, not_input_fees);
     }
 }
 
