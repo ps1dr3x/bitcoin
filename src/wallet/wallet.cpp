@@ -2497,6 +2497,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     // Filter by the min conf specs and add to utxo_pool and calculate effective value
     std::vector<CInputCoin> utxo_pool;
     std::vector<CInputCoin> all_utxo;
+    bool have_neg = false;
     for (const COutput &output : vCoins)
     {
         if (!OutputEligibleForSpending(output, eligibility_filter))
@@ -2509,8 +2510,10 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
         if (coin.effective_value > 0) {
             coin.long_term_fee = output.nInputBytes < 0 ? 0 : long_term_feerate.GetFee(output.nInputBytes);
             utxo_pool.push_back(coin);
+            all_utxo.push_back(coin);
+        } else if (!have_neg && coin.effective_value < 0) {
+            all_utxo.push_back(coin);
         }
-        all_utxo.push_back(coin);
     }
     // Calculate the fees for things that aren't inputs
     // The only situation we are not using effective values is when we are subtracting the fee from the outputs, so don't calculate not_input_fees in that case
