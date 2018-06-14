@@ -18,6 +18,7 @@ struct CoinSelectionInfo
 {
     int bnb_use = 0;
     int srd_use = 0;
+    int largest_lower_use = 0;
 };
 
 extern CoinSelectionInfo csinfo;

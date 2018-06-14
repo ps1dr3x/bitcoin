@@ -2532,6 +2532,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
         return true;
     } else if (smallest_larger_coin && smallest_larger_coin->effective_value > nTargetValue + not_input_fees) {
         nValueRet = smallest_larger_coin->txout.nValue;
+        csinfo.largest_lower_use++;
         setCoinsRet.clear();
         setCoinsRet.insert(smallest_larger_coin.get());
         return true;

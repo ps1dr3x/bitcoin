@@ -4351,6 +4351,7 @@ UniValue coinselectioninfo(const JSONRPCRequest& request)
 
     res.pushKV("BnB_Usage", csinfo.bnb_use);
     res.pushKV("SRD_Usage", csinfo.srd_use);
+    res.pushKV("LarLow_Usage", csinfo.largest_lower_use);
 
     return res;
 }

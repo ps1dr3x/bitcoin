@@ -169,11 +169,11 @@ class CoinSelectionSimulation(BitcoinTestFramework):
         self.log.info("| Simulation File | final value | mean #UTXO | final #UTXO | #received | #spent | #payments sent |"
             + "#changes created | min change | max change | mean change | stDev of change | "
             + "total fees | average fees | fees to spend remaining UTXO | total cost | "
-            + "min input set | max input set | mean size of input set | stdev of input set size | BnB Usage | SRD Usage |")
-        self.log.info("| {} | {:.8f} | {:.2f} | {} | {} | {} | {} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {} | {} | {:.8f} | {:.8f} | {} | {} |".format( \
-            scenario, self.nodes[1].getbalance(), Decimal(mean(utxo_set_sizes)), len(remaining_utxos), count_received, count_sent, \
+            + "min input set | max input set | mean size of input set | stdev of input set size | BnB Usage | SRD Usage | Largest Lower Usage |")
+        self.log.info("|  {} | {} | {:.8f} | {:.2f} | {} | {} | {} | {} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {:.8f} | {} | {} | {:.8f} | {:.8f} | {} | {} | {} |".format( \
+            scenario, self.nodes[i].getbalance(), Decimal(mean(utxo_set_sizes)), len(remaining_utxos), count_received, count_sent, \
             payments, len(change_vals), min_change, max_change, mean_change, stdev_change, total_fees, Decimal(total_fees / withdraws), \
-            cost_to_empty, total_cost, min_input_size, max_input_size, mean_input_size, stdev_input_size, csinfo['BnB_Usage'], csinfo['SRD_Usage']))
+            cost_to_empty, total_cost, min_input_size, max_input_size, mean_input_size, stdev_input_size, csinfo['BnB_Usage'], csinfo['SRD_Usage'], csinfo['LarLow_Usage']))
 
 if __name__ == '__main__':
     CoinSelectionSimulation().main()
