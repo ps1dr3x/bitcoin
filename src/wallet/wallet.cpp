@@ -2494,9 +2494,15 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     // Calculate cost of change
     CAmount cost_of_change = GetDiscardRate(*this, ::feeEstimator).GetFee(coin_selection_params.change_spend_size) + coin_selection_params.effective_fee.GetFee(coin_selection_params.change_output_size);
 
+    // Calculate the fees for things that aren't inputs
+    // The only situation we are not using effective values is when we are subtracting the fee from the outputs, so don't calculate not_input_fees in that case
+    CAmount not_input_fees = use_effective ? coin_selection_params.effective_fee.GetFee(coin_selection_params.tx_noinputs_size) : 0;
+
     // Filter by the min conf specs and add to utxo_pool and calculate effective value
     std::vector<CInputCoin> utxo_pool;
     std::vector<CInputCoin> small_utxos;
+    CAmount small_value = 0;
+    boost::optional<CInputCoin> smallest_larger_coin;
     for (const COutput &output : vCoins)
     {
         if (!OutputEligibleForSpending(output, eligibility_filter))
@@ -2511,19 +2517,26 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
             utxo_pool.push_back(coin);
             if (coin.effective_value < nTargetValue) {
                 small_utxos.push_back(coin);
+                small_value += coin.effective_value;
+            }
+            if (coin.effective_value > nTargetValue + not_input_fees && (!smallest_larger_coin || coin.effective_value < smallest_larger_coin->effective_value)) {
+                smallest_larger_coin = coin;
             }
         }
     }
-    // Calculate the fees for things that aren't inputs
-    // The only situation we are not using effective values is when we are subtracting the fee from the outputs, so don't calculate not_input_fees in that case
-    CAmount not_input_fees = use_effective ? coin_selection_params.effective_fee.GetFee(coin_selection_params.tx_noinputs_size) : 0;
 
     // Start with BnB. If that fails, use SRD
     if (use_bnb) {
         return SelectCoinsBnB(utxo_pool, nTargetValue, cost_of_change, setCoinsRet, nValueRet, not_input_fees);
-    } else {
-        return SingleRandomDraw(nTargetValue, small_utxos, setCoinsRet, nValueRet, not_input_fees) || SingleRandomDraw(nTargetValue, utxo_pool, setCoinsRet, nValueRet, not_input_fees);
+    } else if (small_value > nTargetValue + not_input_fees && SingleRandomDraw(nTargetValue, small_utxos, setCoinsRet, nValueRet, not_input_fees)) {
+        return true;
+    } else if (smallest_larger_coin && smallest_larger_coin->effective_value > nTargetValue + not_input_fees) {
+        nValueRet = smallest_larger_coin->txout.nValue;
+        setCoinsRet.clear();
+        setCoinsRet.insert(smallest_larger_coin.get());
+        return true;
     }
+    return false;
 }
 
 bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet,
