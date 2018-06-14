@@ -14,6 +14,8 @@ struct {
     }
 } descending;
 
+CoinSelectionInfo csinfo;
+
 /*
  * This is the Branch and Bound Coin Selection algorithm designed by Murch. It searches for an input
  * set that can pay for the spending target and does not exceed the spending target by more than the
@@ -161,6 +163,7 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
         }
     }
 
+    csinfo.bnb_use++;
     return true;
 }
 
@@ -183,6 +186,7 @@ bool SingleRandomDraw(const CAmount& target_value, std::vector<CInputCoin>& utxo
 
         // We have enough coins, stop selecting
         if (curr_value >= target_value + non_input_fees) {
+            csinfo.srd_use++;
             return true;
         }
     }
