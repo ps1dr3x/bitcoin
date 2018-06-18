@@ -14,6 +14,8 @@ struct {
     }
 } descending;
 
+CoinSelectionInfo csinfo;
+
 /*
  * This is the Branch and Bound Coin Selection algorithm designed by Murch. It searches for an input
  * set that can pay for the spending target and does not exceed the spending target by more than the
@@ -161,6 +163,7 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
         }
     }
 
+    csinfo.bnb_use++;
     return true;
 }
 
@@ -228,6 +231,7 @@ bool KnapsackSolver(const CAmount& nTargetValue, std::vector<CInputCoin>& vCoins
         {
             setCoinsRet.insert(coin);
             nValueRet += coin.txout.nValue;
+            csinfo.orig_use++;
             return true;
         }
         else if (coin.txout.nValue < nTargetValue + MIN_CHANGE)
@@ -248,6 +252,7 @@ bool KnapsackSolver(const CAmount& nTargetValue, std::vector<CInputCoin>& vCoins
             setCoinsRet.insert(input);
             nValueRet += input.txout.nValue;
         }
+        csinfo.orig_use++;
         return true;
     }
 
@@ -257,6 +262,7 @@ bool KnapsackSolver(const CAmount& nTargetValue, std::vector<CInputCoin>& vCoins
             return false;
         setCoinsRet.insert(coinLowestLarger.get());
         nValueRet += coinLowestLarger->txout.nValue;
+        csinfo.orig_use++;
         return true;
     }
 
@@ -295,6 +301,7 @@ bool KnapsackSolver(const CAmount& nTargetValue, std::vector<CInputCoin>& vCoins
             LogPrint(BCLog::SELECTCOINS, "total %s\n", FormatMoney(nBest));
         }
     }
-
+    
+    csinfo.orig_use++;
     return true;
 }
