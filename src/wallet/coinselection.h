@@ -14,6 +14,14 @@ static const CAmount MIN_CHANGE = CENT;
 //! final minimum change amount after paying for fees
 static const CAmount MIN_FINAL_CHANGE = MIN_CHANGE/2;
 
+struct CoinSelectionInfo
+{
+    int bnb_use = 0;
+    int srd_use = 0;
+};
+
+extern CoinSelectionInfo csinfo;
+
 class CInputCoin {
 public:
     CInputCoin(const CTransactionRef& tx, unsigned int i)
