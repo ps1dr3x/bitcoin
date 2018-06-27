@@ -441,6 +441,83 @@ bool PartiallySignedInput::IsNull() const
     return !non_witness_utxo && witness_utxo.IsNull() && partial_sigs.empty() && unknown.empty() && hd_keypaths.empty() && redeem_script.empty() && witness_script.empty();
 }
 
+void PartiallySignedInput::FillSignatureData(SignatureData& sigdata) const
+{
+    if (!final_script_sig.empty()) {
+        sigdata.scriptSig = final_script_sig;
+        sigdata.complete = true;
+    }
+    if (!final_script_witness.IsNull()) {
+        sigdata.scriptWitness = final_script_witness;
+        sigdata.complete = true;
+    }
+    if (sigdata.complete) {
+        return;
+    }
+
+    sigdata.signatures.insert(partial_sigs.begin(), partial_sigs.end());
+    if (!redeem_script.empty()) {
+        sigdata.redeem_script = redeem_script;
+    }
+    if (!witness_script.empty()) {
+        sigdata.witness_script = witness_script;
+    }
+    for (const auto& key_pair : hd_keypaths) {
+        sigdata.misc_pubkeys.emplace(key_pair.first.GetID(), key_pair.first);
+    }
+}
+
+void PartiallySignedInput::FromSignatureData(const SignatureData& sigdata, bool sign)
+{
+    if (sigdata.complete && sign) {
+        partial_sigs.clear();
+        hd_keypaths.clear();
+        redeem_script.clear();
+        witness_script.clear();
+
+        if (!sigdata.scriptSig.empty()) {
+            final_script_sig = sigdata.scriptSig;
+        }
+        if (!sigdata.scriptWitness.IsNull()) {
+            final_script_witness = sigdata.scriptWitness;
+        }
+        return;
+    }
+
+    if (sign) {
+        partial_sigs.insert(sigdata.signatures.begin(), sigdata.signatures.end());
+    }
+    if (redeem_script.empty() && !sigdata.redeem_script.empty()) {
+        redeem_script = sigdata.redeem_script;
+    }
+    if (witness_script.empty() && !sigdata.witness_script.empty()) {
+        witness_script = sigdata.witness_script;
+    }
+}
+
+void PSBTOutput::FillSignatureData(SignatureData& sigdata) const
+{
+    if (!redeem_script.empty()) {
+        sigdata.redeem_script = redeem_script;
+    }
+    if (!witness_script.empty()) {
+        sigdata.witness_script = witness_script;
+    }
+    for (const auto& key_pair : hd_keypaths) {
+        sigdata.misc_pubkeys.emplace(key_pair.first.GetID(), key_pair.first);
+    }
+}
+
+void PSBTOutput::FromSignatureData(const SignatureData& sigdata)
+{
+    if (redeem_script.empty() && !sigdata.redeem_script.empty()) {
+        redeem_script = sigdata.redeem_script;
+    }
+    if (witness_script.empty() && !sigdata.witness_script.empty()) {
+        witness_script = sigdata.witness_script;
+    }
+}
+
 bool PSBTOutput::IsNull() const
 {
     return redeem_script.empty() && witness_script.empty() && hd_keypaths.empty() && unknown.empty();

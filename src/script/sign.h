@@ -142,6 +142,8 @@ struct PartiallySignedInput
     int sighash_type = 0;
 
     bool IsNull() const;
+    void FillSignatureData(SignatureData& sigdata) const;
+    void FromSignatureData(const SignatureData& sigdata, bool sign = true);
     PartiallySignedInput() {}
 
     template <typename Stream>
@@ -369,6 +371,8 @@ struct PSBTOutput
     std::map<std::vector<unsigned char>, std::vector<unsigned char>> unknown;
 
     bool IsNull() const;
+    void FillSignatureData(SignatureData& sigdata) const;
+    void FromSignatureData(const SignatureData& sigdata);
     PSBTOutput() {}
 
     template <typename Stream>
