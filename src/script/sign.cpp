@@ -49,15 +49,22 @@ static bool GetCScript(const SigningProvider* provider, const SignatureData* sig
     return false;
 }
 
-static bool GetPubKey(const SigningProvider* provider, const SignatureData* sigdata, const CKeyID &address, CPubKey& pubkey)
+static bool GetPubKey(const SigningProvider* provider, SignatureData* sigdata, const CKeyID &address, CPubKey& pubkey)
 {
     if (provider != nullptr && provider->GetPubKey(address, pubkey)) {
+        sigdata->misc_pubkeys.emplace(pubkey.GetID(), pubkey);
         return true;
     }
     // Look for pubkey in all partial sigs
     const auto& it = sigdata->signatures.find(address);
     if (it != sigdata->signatures.end()) {
         pubkey = it->second.first;
+        return true;
+    }
+    // Look for pubkey in pubkey list
+    const auto& pk_it = sigdata->misc_pubkeys.find(address);
+    if (pk_it != sigdata->misc_pubkeys.end()) {
+        pubkey = pk_it->second;
         return true;
     }
     return false;
@@ -200,6 +207,7 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
         txnouttype subType;
         solved = solved && SignStep(provider, creator, witnessscript, result, subType, SigVersion::WITNESS_V0, sigdata);
         sigdata.scriptWitness.stack = result;
+        sigdata.witness = true;
         result.clear();
     }
     else if (solved && whichType == TX_WITNESS_V0_SCRIPTHASH)
@@ -210,7 +218,10 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
         solved = solved && SignStep(provider, creator, witnessscript, result, subType, SigVersion::WITNESS_V0, sigdata) && subType != TX_SCRIPTHASH && subType != TX_WITNESS_V0_SCRIPTHASH && subType != TX_WITNESS_V0_KEYHASH;
         result.push_back(std::vector<unsigned char>(witnessscript.begin(), witnessscript.end()));
         sigdata.scriptWitness.stack = result;
+        sigdata.witness = true;
         result.clear();
+    } else if (solved && whichType == TX_WITNESS_UNKNOWN) {
+        sigdata.witness = true;
     }
 
     if (P2SH) {
