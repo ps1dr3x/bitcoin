@@ -11,6 +11,8 @@ class CRPCTable;
 class CWallet;
 class JSONRPCRequest;
 class UniValue;
+class PartiallySignedTransaction;
+class CTransaction;
 
 void RegisterWalletRPCCommands(CRPCTable &t);
 
