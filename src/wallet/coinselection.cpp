@@ -187,7 +187,7 @@ bool SingleRandomDraw(const CAmount& recipient_value, std::vector<CInputCoin>& u
         out_set.insert(utxo);
 
         // We have enough coins, stop selecting
-        if (curr_value >= recipient_value + non_input_fees) {
+        if (curr_value >= recipient_value + non_input_fees + MIN_FINAL_CHANGE) {
             csinfo.srd_use++;
             return true;
         }
