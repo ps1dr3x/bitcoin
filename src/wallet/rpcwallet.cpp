@@ -4505,11 +4505,13 @@ bool FillPSBT(const CWallet* pwallet, PartiallySignedTransaction& psbtx, const C
         // If we don't know about this input, skip it and let someone else deal with it
         const uint256& txhash = txin.prevout.hash;
         const auto& it = pwallet->mapWallet.find(txhash);
+        bool from_wallet = false;
         if (it != pwallet->mapWallet.end()) {
             const CWalletTx& wtx = it->second;
             CTxOut utxo = wtx.tx->vout[txin.prevout.n];
             input.non_witness_utxo = wtx.tx;
             input.witness_utxo = utxo;
+            from_wallet = true;
         }
 
         // Get the Sighash type
@@ -4525,10 +4527,12 @@ bool FillPSBT(const CWallet* pwallet, PartiallySignedTransaction& psbtx, const C
         }
 
         // Drop the unnecessary UTXO
-        if (sigdata.witness) {
-            input.non_witness_utxo = nullptr;
-        } else {
-            input.witness_utxo.SetNull();
+        if (from_wallet) {
+            if (sigdata.witness) {
+                input.non_witness_utxo = nullptr;
+            } else {
+                input.witness_utxo.SetNull();
+            }
         }
 
         // Get public key paths
