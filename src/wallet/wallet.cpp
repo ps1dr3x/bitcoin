@@ -496,7 +496,7 @@ bool CWallet::LoadDescriptor(const WalletDescriptor& desc)
 {
     LOCK(cs_wallet);
     DescriptorID id(*desc.descriptor);
-    for (int32_t i = 0; i < desc.range_end; ++i) {
+    for (int32_t i = desc.range_start; i < desc.range_end; ++i) {
         FlatSigningProvider out_keys;
         std::vector<CScript> scripts_temp;
         desc.descriptor->ExpandFromCache(i, desc.cache[i - desc.range_start], scripts_temp, out_keys);
