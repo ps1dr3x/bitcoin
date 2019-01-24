@@ -1149,8 +1149,6 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
         import_data.import_scripts.emplace(x.second);
     }
 
-    std::copy(out_keys.pubkeys.begin(), out_keys.pubkeys.end(), std::inserter(pubkey_map, pubkey_map.end()));
-
     for (size_t i = 0; i < priv_keys.size(); ++i) {
         const auto& str = priv_keys[i].get_str();
         CKey key = DecodeSecret(str);
@@ -1161,7 +1159,7 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
         CKeyID id = pubkey.GetID();
 
         // Check if this private key corresponds to a public key from the descriptor
-        if (!pubkey_map.count(id)) {
+        if (!out_keys.pubkeys.count(id)) {
             warnings.push_back("Ignoring irrelevant private key.");
         } else {
             privkey_map.emplace(id, key);
@@ -1170,7 +1168,7 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
 
     // Check if all the public keys have corresponding private keys in the import for spendability.
     // This does not take into account threshold multisigs which could be spendable without all keys
-    bool spendable = std::all_of(pubkey_map.begin(), pubkey_map.end(), [&](const std::pair<CKeyID, CPubKey>& used_key){ return privkey_map.count(used_key.first) > 0; });
+    bool spendable = std::all_of(out_keys.pubkeys.begin(), out_keys.pubkeys.end(), [&](const std::pair<CKeyID, CPubKey>& used_key){ return privkey_map.count(used_key.first) > 0; });
     if (!watch_only && !spendable) {
         warnings.push_back("Some private keys are missing, outputs will be considered watchonly. If this is intentional, specify the watchonly flag.");
     }
