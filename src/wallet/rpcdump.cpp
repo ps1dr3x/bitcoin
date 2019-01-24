@@ -985,11 +985,14 @@ static UniValue ProcessImportLegacy(ImportData& import_data, std::map<CKeyID, CP
     const bool internal = data.exists("internal") ? data["internal"].get_bool() : false;
     const bool watchOnly = data.exists("watchonly") ? data["watchonly"].get_bool() : false;
 
+    if (data.exists("range")) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Range should not be specified for a non-descriptor import");
+    }
+
     // Generate the script and destination for the scriptPubKey provided
     CScript script;
-    CTxDestination dest;
     if (!isScript) {
-        dest = DecodeDestination(output);
+        CTxDestination dest = DecodeDestination(output);
         if (!IsValidDestination(dest)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address \"" + output + "\"");
         }
@@ -1000,6 +1003,7 @@ static UniValue ProcessImportLegacy(ImportData& import_data, std::map<CKeyID, CP
         }
         std::vector<unsigned char> vData(ParseHex(output));
         script = CScript(vData.begin(), vData.end());
+        CTxDestination dest;
         if (!ExtractDestination(script, dest) && !internal) {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Internal must be set to true for nonstandard scriptPubKey imports.");
         }
@@ -1131,6 +1135,9 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
             throw JSONRPCError(RPC_INVALID_PARAMETER, "End of range for descriptor must be specified");
         }
         range_end = range["end"].get_int64();
+        if (range_end < range_start || range_start < 0) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid descriptor range specified");
+        }
     }
 
     const UniValue& priv_keys = data.exists("keys") ? data["keys"].get_array() : UniValue();
@@ -1167,7 +1174,9 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
     }
 
     // Check if all the public keys have corresponding private keys in the import for spendability.
-    // This does not take into account threshold multisigs which could be spendable without all keys
+    // This does not take into account threshold multisigs which could be spendable without all keys.
+    // Thus, threshold multisigs without all keys will be considered not spendable here, even if they are,
+    // perhaps triggering a false warning message. This is consistent with the current wallet IsMine check.
     bool spendable = std::all_of(out_keys.pubkeys.begin(), out_keys.pubkeys.end(), [&](const std::pair<CKeyID, CPubKey>& used_key){ return privkey_map.count(used_key.first) > 0; });
     if (!watch_only && !spendable) {
         warnings.push_back("Some private keys are missing, outputs will be considered watchonly. If this is intentional, specify the watchonly flag.");
@@ -1216,7 +1225,7 @@ static UniValue ProcessImport(CWallet * const pwallet, const UniValue& data, con
         // Check whether we have any work to do
         for (const CScript& script : script_pub_keys) {
             if (::IsMine(*pwallet, script) & ISMINE_SPENDABLE) {
-                throw JSONRPCError(RPC_WALLET_ERROR, "The wallet already contains the private key for this address or script");
+                throw JSONRPCError(RPC_WALLET_ERROR, "The wallet already contains the private key for this address or script (\"" + HexStr(script.begin(), script.end()) + "\")");
             }
         }
 
