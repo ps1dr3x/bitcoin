@@ -176,6 +176,10 @@ class TestNode():
         if extra_args is None:
             extra_args = self.extra_args
 
+        # Figure out if we need to make a default wallet
+        if not any((item.startswith('-wallet=') or item == '-nowallet') for item in extra_args):
+            extra_args.append('-wallet=')
+
         # Add a new stdout and stderr file each time bitcoind is started
         if stderr is None:
             stderr = tempfile.NamedTemporaryFile(dir=self.stderr_dir, delete=False)

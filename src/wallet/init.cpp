@@ -184,7 +184,10 @@ void WalletInit::Construct(InitInterfaces& interfaces) const
         LogPrintf("Wallet disabled!\n");
         return;
     }
-    gArgs.SoftSetArg("-wallet", "");
+    WalletLocation default_wallet("wallet.dat");
+    if (default_wallet.Exists()) {
+        gArgs.SoftSetArg("-wallet", "");
+    }
     interfaces.chain_clients.emplace_back(interfaces::MakeWalletClient(*interfaces.chain, gArgs.GetArgs("-wallet")));
 }
 
