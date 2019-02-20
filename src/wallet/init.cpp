@@ -188,7 +188,16 @@ void WalletInit::Construct(InitInterfaces& interfaces) const
     if (default_wallet.Exists()) {
         gArgs.SoftSetArg("-wallet", "");
     }
-    interfaces.chain_clients.emplace_back(interfaces::MakeWalletClient(*interfaces.chain, gArgs.GetArgs("-wallet")));
+    std::vector<std::string> wallets = gArgs.GetArgs("-wallet");
+    std::stringstream ss(gArgs.GetArg("-loadedwallet", ""));
+    std::string loaded_wallet;
+    while (std::getline(ss, loaded_wallet, ',')) {
+        if (std::find(wallets.begin(), wallets.end(), loaded_wallet) == wallets.end()) {
+            wallets.push_back(loaded_wallet);
+        }
+    }
+
+    interfaces.chain_clients.emplace_back(interfaces::MakeWalletClient(*interfaces.chain, wallets));
 }
 
 bool LoadWallets(interfaces::Chain& chain, const std::vector<std::string>& wallet_files)
@@ -231,10 +240,19 @@ void StopWallets()
 void UnloadWallets()
 {
     auto wallets = GetWallets();
+    std::string loaded_wallets = "";
     while (!wallets.empty()) {
         auto wallet = wallets.back();
+
+        // Write the wallet name to rw conf
+        if (!loaded_wallets.empty()) {
+            loaded_wallets += ",";
+        }
+        loaded_wallets += wallet->GetName();
+
         wallets.pop_back();
         RemoveWallet(wallet);
         UnloadWallet(std::move(wallet));
     }
+    gArgs.ModifyRWConfigFile("loadedwallet", loaded_wallets);
 }
