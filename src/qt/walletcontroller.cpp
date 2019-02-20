@@ -56,6 +56,21 @@ std::vector<std::string> WalletController::getWalletsAvailableToOpen() const
     return wallets;
 }
 
+bool WalletController::checkWalletExists(std::string name) const
+{
+    QMutexLocker locker(&m_mutex);
+    std::vector<std::string> wallets = m_node.listWalletDir();
+    if (std::find(wallets.begin(), wallets.end(), name) != wallets.end()) {
+        return true;
+    }
+    for (WalletModel* wallet_model : m_wallets) {
+        if (name == wallet_model->wallet().getWalletName()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 OpenWalletActivity* WalletController::openWallet(const std::string& name, QWidget* parent)
 {
     OpenWalletActivity* activity = new OpenWalletActivity(this, name);

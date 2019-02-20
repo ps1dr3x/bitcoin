@@ -42,6 +42,7 @@ public:
     std::vector<WalletModel*> getWallets() const;
     WalletModel* getOrCreateWallet(std::unique_ptr<interfaces::Wallet> wallet);
     std::vector<std::string> getWalletsAvailableToOpen() const;
+    bool checkWalletExists(std::string name) const;
 
     OpenWalletActivity* openWallet(const std::string& name, QWidget* parent = nullptr);
     std::unique_ptr<interfaces::Wallet> createWallet(const std::string& name, uint64_t wallet_creation_flags);
