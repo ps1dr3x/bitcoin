@@ -2147,6 +2147,9 @@ static UniValue encryptwallet(const JSONRPCRequest& request)
     if (!pwallet->EncryptWallet(strWalletPass)) {
         throw JSONRPCError(RPC_WALLET_ENCRYPTION_FAILED, "Error: Failed to encrypt the wallet.");
     }
+    if (!pwallet->Unlock(strWalletPass)) {
+        throw JSONRPCError(RPC_WALLET_ENCRYPTION_FAILED, "Error: Newly encrypted wallet could not be unlocked.");
+    }
 
     return "wallet encrypted; The keypool has been flushed and a new HD seed was generated (if you are using HD). You need to make a new backup.";
 }

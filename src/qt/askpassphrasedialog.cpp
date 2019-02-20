@@ -132,6 +132,12 @@ void AskPassphraseDialog::accept()
                                          "For security reasons, previous backups of the unencrypted wallet file "
                                          "will become useless as soon as you start using the new, encrypted wallet.") +
                                          "</b></qt>");
+                    // Unlock the wallet now
+                    if(!model->setWalletLocked(false, newpass1))
+                    {
+                        QMessageBox::critical(this, tr("Wallet unlock failed"),
+                                              tr("Unable to decrypt newly encrypted wallet."));
+                    }
                 }
                 else
                 {
