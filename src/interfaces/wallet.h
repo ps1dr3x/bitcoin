@@ -281,6 +281,12 @@ public:
     //! Register handler for keypool changed messages.
     using CanGetAddressesChangedFn = std::function<void()>;
     virtual std::unique_ptr<Handler> handleCanGetAddressesChanged(CanGetAddressesChangedFn fn) = 0;
+
+    //! Generate and set a new HD seed
+    virtual void setNewHDSeed() = 0;
+
+    //! Top up the keypool
+    virtual bool topUpKeyPool() = 0;
 };
 
 //! Tracking object returned by CreateTransaction and passed to CommitTransaction.

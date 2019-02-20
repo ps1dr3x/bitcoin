@@ -503,6 +503,14 @@ public:
     {
         return MakeHandler(m_wallet.NotifyCanGetAddressesChanged.connect(fn));
     }
+    void setNewHDSeed() override
+    {
+        m_wallet.SetHDSeed(m_wallet.GenerateNewSeed());
+    }
+    bool topUpKeyPool() override
+    {
+        return m_wallet.TopUpKeyPool();
+    }
 
     std::shared_ptr<CWallet> m_shared_wallet;
     CWallet& m_wallet;
