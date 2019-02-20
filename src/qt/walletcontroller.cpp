@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <qt/askpassphrasedialog.h>
 #include <qt/walletcontroller.h>
 
 #include <interfaces/handler.h>
@@ -61,6 +62,11 @@ OpenWalletActivity* WalletController::openWallet(const std::string& name, QWidge
     activity->moveToThread(&m_activity_thread);
     QMetaObject::invokeMethod(activity, "open", Qt::QueuedConnection);
     return activity;
+}
+
+std::unique_ptr<interfaces::Wallet> WalletController::createWallet(const std::string& name, uint64_t wallet_creation_flags)
+{
+    return m_node.createWallet(name, wallet_creation_flags);
 }
 
 void WalletController::closeWallet(WalletModel* wallet_model, QWidget* parent)

@@ -197,6 +197,9 @@ public:
     //! with handleLoadWallet.
     virtual std::unique_ptr<Wallet> loadWallet(const std::string& name, std::string& error, std::string& warning) = 0;
 
+    //! Create a wallet from file
+    virtual std::unique_ptr<Wallet> createWallet(const std::string& name, uint64_t wallet_creation_flags) = 0;
+
     //! Register handler for init messages.
     using InitMessageFn = std::function<void(const std::string& message)>;
     virtual std::unique_ptr<Handler> handleInitMessage(InitMessageFn fn) = 0;

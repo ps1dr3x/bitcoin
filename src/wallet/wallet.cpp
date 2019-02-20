@@ -153,6 +153,22 @@ std::shared_ptr<CWallet> LoadWallet(interfaces::Chain& chain, const std::string&
     return LoadWallet(chain, WalletLocation(name), error, warning);
 }
 
+std::shared_ptr<CWallet> CreateWallet(interfaces::Chain& chain, const WalletLocation& location, uint64_t wallet_creation_flags)
+{
+    std::shared_ptr<CWallet> wallet = CWallet::CreateWalletFromFile(chain, location, wallet_creation_flags);
+    if (!wallet) {
+        return nullptr;
+    }
+    AddWallet(wallet);
+    wallet->postInitProcess();
+    return wallet;
+}
+
+std::shared_ptr<CWallet> CreateWallet(interfaces::Chain& chain, const std::string& name, uint64_t wallet_creation_flags)
+{
+    return CreateWallet(chain, WalletLocation(name), wallet_creation_flags);
+}
+
 const uint32_t BIP32_HARDENED_KEY_LIMIT = 0x80000000;
 
 const uint256 CMerkleTx::ABANDON_HASH(uint256S("0000000000000000000000000000000000000000000000000000000000000001"));
