@@ -94,13 +94,12 @@ QString TransactionDesc::toHTML(interfaces::Node& node, interfaces::Wallet& wall
             CTxDestination address = DecodeDestination(rec->address);
             if (IsValidDestination(address)) {
                 std::string name;
-                isminetype ismine;
-                if (wallet.getAddress(address, &name, &ismine, /* purpose= */ nullptr))
+                if (wallet.getAddress(address, &name, /* purpose= */ nullptr))
                 {
                     strHTML += "<b>" + tr("From") + ":</b> " + tr("unknown") + "<br>";
                     strHTML += "<b>" + tr("To") + ":</b> ";
                     strHTML += GUIUtil::HtmlEscape(rec->address);
-                    QString addressOwned = ismine == ISMINE_SPENDABLE ? tr("own address") : tr("watch-only");
+                    QString addressOwned = wallet.isSpendable(address) ? tr("own address") : tr("watch-only");
                     if (!name.empty())
                         strHTML += " (" + addressOwned + ", " + tr("label") + ": " + GUIUtil::HtmlEscape(name) + ")";
                     else
@@ -122,7 +121,7 @@ QString TransactionDesc::toHTML(interfaces::Node& node, interfaces::Wallet& wall
         CTxDestination dest = DecodeDestination(strAddress);
         std::string name;
         if (wallet.getAddress(
-                dest, &name, /* is_mine= */ nullptr, /* purpose= */ nullptr) && !name.empty())
+                dest, &name, /* purpose= */ nullptr) && !name.empty())
             strHTML += GUIUtil::HtmlEscape(name) + " ";
         strHTML += GUIUtil::HtmlEscape(strAddress) + "<br>";
     }
@@ -137,7 +136,7 @@ QString TransactionDesc::toHTML(interfaces::Node& node, interfaces::Wallet& wall
         //
         CAmount nUnmatured = 0;
         for (const CTxOut& txout : wtx.tx->vout)
-            nUnmatured += wallet.getCredit(txout, ISMINE_ALL);
+            nUnmatured += wallet.getCredit(txout);
         strHTML += "<b>" + tr("Credit") + ":</b> ";
         if (status.is_in_main_chain)
             strHTML += BitcoinUnits::formatHtmlWithUnit(unit, nUnmatured)+ " (" + tr("matures in %n more block(s)", "", status.blocks_to_maturity) + ")";
@@ -154,32 +153,39 @@ QString TransactionDesc::toHTML(interfaces::Node& node, interfaces::Wallet& wall
     }
     else
     {
-        isminetype fAllFromMe = ISMINE_SPENDABLE;
-        for (const isminetype mine : wtx.txin_is_mine)
+        bool all_from_me = true;
+        for (const bool mine : wtx.txin_is_mine)
         {
-            if(fAllFromMe > mine) fAllFromMe = mine;
+            all_from_me &= mine;
+        }
+        bool all_from_me_wo = true;
+        for (const bool watchonly : wtx.txin_is_watchonly)
+        {
+            all_from_me_wo &= watchonly;
         }
 
-        isminetype fAllToMe = ISMINE_SPENDABLE;
-        for (const isminetype mine : wtx.txout_is_mine)
+        bool all_to_me = true;
+        for (const bool mine : wtx.txout_is_mine)
         {
-            if(fAllToMe > mine) fAllToMe = mine;
+            all_to_me &= mine;
         }
 
-        if (fAllFromMe)
+        if (all_from_me)
         {
-            if(fAllFromMe & ISMINE_WATCH_ONLY)
+            if(all_from_me_wo)
                 strHTML += "<b>" + tr("From") + ":</b> " + tr("watch-only") + "<br>";
 
             //
             // Debit
             //
             auto mine = wtx.txout_is_mine.begin();
+            auto watchonly = wtx.txout_is_watchonly.begin();
             for (const CTxOut& txout : wtx.tx->vout)
             {
                 // Ignore change
-                isminetype toSelf = *(mine++);
-                if ((toSelf == ISMINE_SPENDABLE) && (fAllFromMe == ISMINE_SPENDABLE))
+                bool toSelf = *(mine++);
+                bool to_watch_only = *(watchonly++);
+                if (toSelf && all_from_me)
                     continue;
 
                 if (!wtx.value_map.count("to") || wtx.value_map["to"].empty())
@@ -191,13 +197,13 @@ QString TransactionDesc::toHTML(interfaces::Node& node, interfaces::Wallet& wall
                         strHTML += "<b>" + tr("To") + ":</b> ";
                         std::string name;
                         if (wallet.getAddress(
-                                address, &name, /* is_mine= */ nullptr, /* purpose= */ nullptr) && !name.empty())
+                                address, &name, /* purpose= */ nullptr) && !name.empty())
                             strHTML += GUIUtil::HtmlEscape(name) + " ";
                         strHTML += GUIUtil::HtmlEscape(EncodeDestination(address));
-                        if(toSelf == ISMINE_SPENDABLE)
-                            strHTML += " (own address)";
-                        else if(toSelf & ISMINE_WATCH_ONLY)
+                        if(to_watch_only)
                             strHTML += " (watch-only)";
+                        else if(toSelf)
+                            strHTML += " (own address)";
                         strHTML += "<br>";
                     }
                 }
@@ -207,7 +213,7 @@ QString TransactionDesc::toHTML(interfaces::Node& node, interfaces::Wallet& wall
                     strHTML += "<b>" + tr("Credit") + ":</b> " + BitcoinUnits::formatHtmlWithUnit(unit, txout.nValue) + "<br>";
             }
 
-            if (fAllToMe)
+            if (all_to_me)
             {
                 // Payment to self
                 CAmount nChange = wtx.change;
@@ -228,13 +234,13 @@ QString TransactionDesc::toHTML(interfaces::Node& node, interfaces::Wallet& wall
             auto mine = wtx.txin_is_mine.begin();
             for (const CTxIn& txin : wtx.tx->vin) {
                 if (*(mine++)) {
-                    strHTML += "<b>" + tr("Debit") + ":</b> " + BitcoinUnits::formatHtmlWithUnit(unit, -wallet.getDebit(txin, ISMINE_ALL)) + "<br>";
+                    strHTML += "<b>" + tr("Debit") + ":</b> " + BitcoinUnits::formatHtmlWithUnit(unit, -wallet.getDebit(txin)) + "<br>";
                 }
             }
             mine = wtx.txout_is_mine.begin();
             for (const CTxOut& txout : wtx.tx->vout) {
                 if (*(mine++)) {
-                    strHTML += "<b>" + tr("Credit") + ":</b> " + BitcoinUnits::formatHtmlWithUnit(unit, wallet.getCredit(txout, ISMINE_ALL)) + "<br>";
+                    strHTML += "<b>" + tr("Credit") + ":</b> " + BitcoinUnits::formatHtmlWithUnit(unit, wallet.getCredit(txout)) + "<br>";
                 }
             }
         }
@@ -291,10 +297,10 @@ QString TransactionDesc::toHTML(interfaces::Node& node, interfaces::Wallet& wall
         strHTML += "<hr><br>" + tr("Debug information") + "<br><br>";
         for (const CTxIn& txin : wtx.tx->vin)
             if(wallet.txinIsMine(txin))
-                strHTML += "<b>" + tr("Debit") + ":</b> " + BitcoinUnits::formatHtmlWithUnit(unit, -wallet.getDebit(txin, ISMINE_ALL)) + "<br>";
+                strHTML += "<b>" + tr("Debit") + ":</b> " + BitcoinUnits::formatHtmlWithUnit(unit, -wallet.getDebit(txin)) + "<br>";
         for (const CTxOut& txout : wtx.tx->vout)
             if(wallet.txoutIsMine(txout))
-                strHTML += "<b>" + tr("Credit") + ":</b> " + BitcoinUnits::formatHtmlWithUnit(unit, wallet.getCredit(txout, ISMINE_ALL)) + "<br>";
+                strHTML += "<b>" + tr("Credit") + ":</b> " + BitcoinUnits::formatHtmlWithUnit(unit, wallet.getCredit(txout)) + "<br>";
 
         strHTML += "<br><b>" + tr("Transaction") + ":</b><br>";
         strHTML += GUIUtil::HtmlEscape(wtx.tx->ToString(), true);
@@ -316,13 +322,13 @@ QString TransactionDesc::toHTML(interfaces::Node& node, interfaces::Wallet& wall
                     if (ExtractDestination(vout.scriptPubKey, address))
                     {
                         std::string name;
-                        if (wallet.getAddress(address, &name, /* is_mine= */ nullptr, /* purpose= */ nullptr) && !name.empty())
+                        if (wallet.getAddress(address, &name, /* purpose= */ nullptr) && !name.empty())
                             strHTML += GUIUtil::HtmlEscape(name) + " ";
                         strHTML += QString::fromStdString(EncodeDestination(address));
                     }
                     strHTML = strHTML + " " + tr("Amount") + "=" + BitcoinUnits::formatHtmlWithUnit(unit, vout.nValue);
-                    strHTML = strHTML + " IsMine=" + (wallet.txoutIsMine(vout) & ISMINE_SPENDABLE ? tr("true") : tr("false")) + "</li>";
-                    strHTML = strHTML + " IsWatchOnly=" + (wallet.txoutIsMine(vout) & ISMINE_WATCH_ONLY ? tr("true") : tr("false")) + "</li>";
+                    strHTML = strHTML + " IsMine=" + (wallet.isSpendable(vout.scriptPubKey) ? tr("true") : tr("false")) + "</li>";
+                    strHTML = strHTML + " IsWatchOnly=" + (wallet.isSpendable(vout.scriptPubKey) ? tr("false") : tr("true")) + "</li>";
                 }
             }
         }

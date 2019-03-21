@@ -7,7 +7,6 @@
 
 #include <amount.h>                    // For CAmount
 #include <pubkey.h>                    // For CKeyID and CScriptID (definitions needed in CTxDestination instantiation)
-#include <script/ismine.h>             // For isminefilter, isminetype
 #include <script/standard.h>           // For CTxDestination
 #include <support/allocators/secure.h> // For SecureString
 #include <ui_interface.h>              // For ChangeType
@@ -88,6 +87,9 @@ public:
     //! Return whether wallet has private key.
     virtual bool isSpendable(const CTxDestination& dest) = 0;
 
+    //! Return whether wallet has private key.
+    virtual bool isSpendable(const CScript& dest) = 0;
+
     //! Return whether wallet has watch only keys.
     virtual bool haveWatchOnly() = 0;
 
@@ -100,7 +102,6 @@ public:
     //! Look up address in wallet, return whether exists.
     virtual bool getAddress(const CTxDestination& dest,
         std::string* name,
-        isminetype* is_mine,
         std::string* purpose) = 0;
 
     //! Get wallet address list.
@@ -201,16 +202,16 @@ public:
     virtual CAmount getAvailableBalance(const CCoinControl& coin_control) = 0;
 
     //! Return whether transaction input belongs to wallet.
-    virtual isminetype txinIsMine(const CTxIn& txin) = 0;
+    virtual bool txinIsMine(const CTxIn& txin) = 0;
 
     //! Return whether transaction output belongs to wallet.
-    virtual isminetype txoutIsMine(const CTxOut& txout) = 0;
+    virtual bool txoutIsMine(const CTxOut& txout) = 0;
 
     //! Return debit amount if transaction input belongs to wallet.
-    virtual CAmount getDebit(const CTxIn& txin, isminefilter filter) = 0;
+    virtual CAmount getDebit(const CTxIn& txin) = 0;
 
     //! Return credit amount if transaction input belongs to wallet.
-    virtual CAmount getCredit(const CTxOut& txout, isminefilter filter) = 0;
+    virtual CAmount getCredit(const CTxOut& txout) = 0;
 
     //! Return AvailableCoins + LockedCoins grouped by wallet address.
     //! (put change in one group with wallet address)
@@ -302,11 +303,11 @@ public:
 struct WalletAddress
 {
     CTxDestination dest;
-    isminetype is_mine;
+    bool is_mine;
     std::string name;
     std::string purpose;
 
-    WalletAddress(CTxDestination dest, isminetype is_mine, std::string name, std::string purpose)
+    WalletAddress(CTxDestination dest, bool is_mine, std::string name, std::string purpose)
         : dest(std::move(dest)), is_mine(is_mine), name(std::move(name)), purpose(std::move(purpose))
     {
     }
@@ -336,10 +337,12 @@ struct WalletBalances
 struct WalletTx
 {
     CTransactionRef tx;
-    std::vector<isminetype> txin_is_mine;
-    std::vector<isminetype> txout_is_mine;
+    std::vector<bool> txin_is_mine;
+    std::vector<bool> txin_is_watchonly;
+    std::vector<bool> txout_is_mine;
+    std::vector<bool> txout_is_watchonly;
     std::vector<CTxDestination> txout_address;
-    std::vector<isminetype> txout_address_is_mine;
+    std::vector<bool> txout_address_is_mine;
     CAmount credit;
     CAmount debit;
     CAmount change;

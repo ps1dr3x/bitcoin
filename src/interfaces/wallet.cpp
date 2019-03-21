@@ -72,18 +72,22 @@ WalletTx MakeWalletTx(interfaces::Chain::Lock& locked_chain, CWallet& wallet, co
     WalletTx result;
     result.tx = wtx.tx;
     result.txin_is_mine.reserve(wtx.tx->vin.size());
+    result.txin_is_watchonly.reserve(wtx.tx->vin.size());
     for (const auto& txin : wtx.tx->vin) {
-        result.txin_is_mine.emplace_back(wallet.IsMine(txin));
+        result.txin_is_mine.emplace_back(wallet.IsMine(txin) != ISMINE_NO);
+        result.txin_is_watchonly.emplace_back(wallet.IsMine(txin) == ISMINE_WATCH_ONLY);
     }
     result.txout_is_mine.reserve(wtx.tx->vout.size());
+    result.txout_is_watchonly.reserve(wtx.tx->vout.size());
     result.txout_address.reserve(wtx.tx->vout.size());
     result.txout_address_is_mine.reserve(wtx.tx->vout.size());
     for (const auto& txout : wtx.tx->vout) {
-        result.txout_is_mine.emplace_back(wallet.IsMine(txout));
+        result.txout_is_mine.emplace_back(wallet.IsMine(txout) != ISMINE_NO);
+        result.txout_is_watchonly.emplace_back(wallet.IsMine(txout) == ISMINE_WATCH_ONLY);
         result.txout_address.emplace_back();
         result.txout_address_is_mine.emplace_back(ExtractDestination(txout.scriptPubKey, result.txout_address.back()) ?
-                                                      IsMine(wallet, result.txout_address.back()) :
-                                                      ISMINE_NO);
+                                                      IsMine(wallet, result.txout_address.back()) != ISMINE_NO:
+                                                      false);
     }
     result.credit = wtx.GetCredit(locked_chain, ISMINE_ALL);
     result.debit = wtx.GetDebit(ISMINE_ALL);
@@ -154,6 +158,7 @@ public:
     bool getPubKey(const CKeyID& address, CPubKey& pub_key) override { return m_wallet->GetPubKey(address, pub_key); }
     bool getPrivKey(const CKeyID& address, CKey& key) override { return m_wallet->GetKey(address, key); }
     bool isSpendable(const CTxDestination& dest) override { return IsMine(*m_wallet, dest) & ISMINE_SPENDABLE; }
+    bool isSpendable(const CScript& dest) override { return IsMine(*m_wallet, dest) & ISMINE_SPENDABLE; }
     bool haveWatchOnly() override { return m_wallet->HaveWatchOnly(); };
     bool setAddressBook(const CTxDestination& dest, const std::string& name, const std::string& purpose) override
     {
@@ -165,7 +170,6 @@ public:
     }
     bool getAddress(const CTxDestination& dest,
         std::string* name,
-        isminetype* is_mine,
         std::string* purpose) override
     {
         LOCK(m_wallet->cs_wallet);
@@ -175,9 +179,6 @@ public:
         }
         if (name) {
             *name = it->second.name;
-        }
-        if (is_mine) {
-            *is_mine = IsMine(*m_wallet, dest);
         }
         if (purpose) {
             *purpose = it->second.purpose;
@@ -387,29 +388,29 @@ public:
     {
         return m_wallet->GetAvailableBalance(&coin_control);
     }
-    isminetype txinIsMine(const CTxIn& txin) override
+    bool txinIsMine(const CTxIn& txin) override
     {
         auto locked_chain = m_wallet->chain().lock();
         LOCK(m_wallet->cs_wallet);
         return m_wallet->IsMine(txin);
     }
-    isminetype txoutIsMine(const CTxOut& txout) override
+    bool txoutIsMine(const CTxOut& txout) override
     {
         auto locked_chain = m_wallet->chain().lock();
         LOCK(m_wallet->cs_wallet);
         return m_wallet->IsMine(txout);
     }
-    CAmount getDebit(const CTxIn& txin, isminefilter filter) override
+    CAmount getDebit(const CTxIn& txin) override
     {
         auto locked_chain = m_wallet->chain().lock();
         LOCK(m_wallet->cs_wallet);
-        return m_wallet->GetDebit(txin, filter);
+        return m_wallet->GetDebit(txin, ISMINE_ALL);
     }
-    CAmount getCredit(const CTxOut& txout, isminefilter filter) override
+    CAmount getCredit(const CTxOut& txout) override
     {
         auto locked_chain = m_wallet->chain().lock();
         LOCK(m_wallet->cs_wallet);
-        return m_wallet->GetCredit(txout, filter);
+        return m_wallet->GetCredit(txout, ISMINE_ALL);
     }
     CoinsList listCoins() override
     {

@@ -45,14 +45,13 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const interface
         for(unsigned int i = 0; i < wtx.tx->vout.size(); i++)
         {
             const CTxOut& txout = wtx.tx->vout[i];
-            isminetype mine = wtx.txout_is_mine[i];
-            if(mine)
+            if(wtx.txout_is_mine[i])
             {
                 TransactionRecord sub(hash, nTime);
                 CTxDestination address;
                 sub.idx = i; // vout index
                 sub.credit = txout.nValue;
-                sub.involvesWatchAddress = mine & ISMINE_WATCH_ONLY;
+                sub.involvesWatchAddress = wtx.txout_is_watchonly[i];
                 if (wtx.txout_address_is_mine[i])
                 {
                     // Received by Bitcoin Address
@@ -77,22 +76,28 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const interface
     }
     else
     {
-        bool involvesWatchAddress = false;
-        isminetype fAllFromMe = ISMINE_SPENDABLE;
-        for (const isminetype mine : wtx.txin_is_mine)
+        bool involvesWatchAddress = true;
+        bool all_from_me = true;
+        for (const bool mine : wtx.txin_is_mine)
         {
-            if(mine & ISMINE_WATCH_ONLY) involvesWatchAddress = true;
-            if(fAllFromMe > mine) fAllFromMe = mine;
+            all_from_me &= mine;
+        }
+        for (const bool watchonly : wtx.txin_is_watchonly)
+        {
+            involvesWatchAddress &= watchonly;
         }
 
-        isminetype fAllToMe = ISMINE_SPENDABLE;
-        for (const isminetype mine : wtx.txout_is_mine)
+        bool all_to_me = true;
+        for (const bool mine : wtx.txout_is_mine)
         {
-            if(mine & ISMINE_WATCH_ONLY) involvesWatchAddress = true;
-            if(fAllToMe > mine) fAllToMe = mine;
+            all_to_me &= mine;
+        }
+        for (const bool watchonly : wtx.txout_is_watchonly)
+        {
+            involvesWatchAddress &= watchonly;
         }
 
-        if (fAllFromMe && fAllToMe)
+        if (all_from_me && all_to_me)
         {
             // Payment to self
             CAmount nChange = wtx.change;
@@ -101,7 +106,7 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const interface
                             -(nDebit - nChange), nCredit - nChange));
             parts.last().involvesWatchAddress = involvesWatchAddress;   // maybe pass to TransactionRecord as constructor argument
         }
-        else if (fAllFromMe)
+        else if (all_from_me)
         {
             //
             // Debit
