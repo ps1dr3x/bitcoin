@@ -906,6 +906,9 @@ public:
     bool HaveWatchOnly(const CTxIn &txin) const;
     using CBasicKeyStore::HaveWatchOnly;
 
+    //! Whether the script is spendable
+    bool IsSpendable(const CScript& script) const;
+
     //! Holds a timestamp at which point the wallet is scheduled (externally) to be relocked. Caller must arrange for actual relocking to occur via Lock().
     int64_t nRelockTime = 0;
 

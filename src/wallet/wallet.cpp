@@ -489,6 +489,134 @@ bool CWallet::HaveWatchOnly(const CTxIn &txin) const
     return false;
 }
 
+/**
+ * This is an enum that tracks the execution context of a script, similar to
+ * SigVersion in script/interpreter. It is separate however because we want to
+ * distinguish between top-level scriptPubKey execution and P2SH redeemScript
+ * execution (a distinction that has no impact on consensus rules).
+ */
+enum class IsSpendableSigVersion
+{
+    TOP = 0,        //!< scriptPubKey execution
+    P2SH = 1,       //!< P2SH redeemScript
+    WITNESS_V0 = 2, //!< P2WSH witness script execution
+};
+
+bool PermitsUncompressed(IsSpendableSigVersion sigversion)
+{
+    return sigversion == IsSpendableSigVersion::TOP || sigversion == IsSpendableSigVersion::P2SH;
+}
+
+bool IsSpendableInner(const CKeyStore& keystore, const CScript& script, IsSpendableSigVersion sigversion)
+{
+    std::vector<std::vector<unsigned char>> solutions;
+    txnouttype type = Solver(script, solutions);
+
+    CKeyID key_id;
+    switch (type)
+    {
+    case TX_NONSTANDARD:
+    case TX_NULL_DATA:
+    case TX_WITNESS_UNKNOWN:
+        break;
+    case TX_PUBKEY:
+        key_id = CPubKey(solutions[0]).GetID();
+        if (!PermitsUncompressed(sigversion) && solutions[0].size() != 33) {
+            return false;
+        }
+        if (keystore.HaveKey(key_id)) {
+            return true;
+        }
+        break;
+    case TX_WITNESS_V0_KEYHASH:
+    {
+        if (sigversion == IsSpendableSigVersion::WITNESS_V0 || // P2WPKH inside P2WSH is invalid.
+            (sigversion == IsSpendableSigVersion::TOP && !keystore.HaveCScript(CScriptID(CScript() << OP_0 << solutions[0])))) {
+            // We do not support bare witness outputs unless the P2SH version of it would be
+            // acceptable as well. This protects against matching before segwit activates.
+            // This also applies to the P2WSH case.
+            break;
+        }
+        return IsSpendableInner(keystore, GetScriptForDestination(CKeyID(uint160(solutions[0]))), IsSpendableSigVersion::WITNESS_V0);
+        break;
+    }
+    case TX_PUBKEYHASH:
+        key_id = CKeyID(uint160(solutions[0]));
+        if (!PermitsUncompressed(sigversion)) {
+            CPubKey pubkey;
+            if (keystore.GetPubKey(key_id, pubkey) && !pubkey.IsCompressed()) {
+                return false;
+            }
+        }
+        if (keystore.HaveKey(key_id)) {
+            return true;
+        }
+        break;
+    case TX_SCRIPTHASH:
+    {
+        if (sigversion != IsSpendableSigVersion::TOP) {
+            // P2SH inside P2WSH or P2SH is invalid.
+            return false;
+        }
+        CScriptID scriptID = CScriptID(uint160(solutions[0]));
+        CScript subscript;
+        if (keystore.GetCScript(scriptID, subscript)) {
+            return IsSpendableInner(keystore, subscript, IsSpendableSigVersion::P2SH);
+        }
+        break;
+    }
+    case TX_WITNESS_V0_SCRIPTHASH:
+    {
+        if (sigversion == IsSpendableSigVersion::WITNESS_V0 ||
+            (sigversion == IsSpendableSigVersion::TOP && !keystore.HaveCScript(CScriptID(CScript() << OP_0 << solutions[0])))) {
+            break;
+        }
+        uint160 hash;
+        CRIPEMD160().Write(&solutions[0][0], solutions[0].size()).Finalize(hash.begin());
+        CScriptID scriptID = CScriptID(hash);
+        CScript subscript;
+        if (keystore.GetCScript(scriptID, subscript)) {
+            return IsSpendableInner(keystore, subscript, IsSpendableSigVersion::WITNESS_V0);
+        }
+        break;
+    }
+
+    case TX_MULTISIG:
+    {
+        // Never treat bare multisig outputs as ours (they can still be made watchonly-though)
+        if (sigversion == IsSpendableSigVersion::TOP) {
+            break;
+        }
+
+        // Only consider transactions "mine" if we own ALL the
+        // keys involved. Multi-signature transactions that are
+        // partially owned (somebody else has a key that can spend
+        // them) enable spend-out-from-under-you attacks, especially
+        // in shared-wallet situations.
+        std::vector<std::vector<unsigned char>> keys(solutions.begin()+1, solutions.begin()+solutions.size()-1);
+        if (!PermitsUncompressed(sigversion)) {
+            for (size_t i = 0; i < keys.size(); i++) {
+                if (keys[i].size() != 33) {
+                    return false;
+                }
+            }
+        }
+        for (const std::vector<unsigned char>& pubkey : keys) {
+            CKeyID keyID = CPubKey(pubkey).GetID();
+            if (!keystore.HaveKey(keyID)) return false;
+        }
+        return true;
+        break;
+    }
+    }
+    return false;
+}
+
+bool CWallet::IsSpendable(const CScript& script) const
+{
+    return IsSpendableInner(*this, script, IsSpendableSigVersion::TOP);
+}
+
 bool CWallet::RemoveWatchOnly(const CScript &dest)
 {
     AssertLockHeld(cs_wallet);
