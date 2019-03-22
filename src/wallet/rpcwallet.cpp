@@ -761,12 +761,12 @@ static UniValue getbalance(const JSONRPCRequest& request)
         min_depth = request.params[1].get_int();
     }
 
-    isminefilter filter = ISMINE_SPENDABLE;
+    bool include_watch_only = false;
     if (!request.params[2].isNull() && request.params[2].get_bool()) {
-        filter = filter | ISMINE_WATCH_ONLY;
+        include_watch_only = true;
     }
 
-    return ValueFromAmount(pwallet->GetBalance(filter, min_depth));
+    return ValueFromAmount(pwallet->GetBalance(true, include_watch_only, min_depth));
 }
 
 static UniValue getunconfirmedbalance(const JSONRPCRequest &request)
@@ -930,7 +930,7 @@ static UniValue sendmany(const JSONRPCRequest& request)
     EnsureWalletIsUnlocked(pwallet);
 
     // Check funds
-    if (totalAmount > pwallet->GetLegacyBalance(ISMINE_SPENDABLE, nMinDepth)) {
+    if (totalAmount > pwallet->GetLegacyBalance(true, false, nMinDepth)) {
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Wallet has insufficient funds");
     }
 
@@ -1059,10 +1059,9 @@ static UniValue ListReceived(interfaces::Chain::Lock& locked_chain, CWallet * co
     if (!params[1].isNull())
         fIncludeEmpty = params[1].get_bool();
 
-    isminefilter filter = ISMINE_SPENDABLE;
+    bool include_watch_only = false;
     if(!params[2].isNull())
-        if(params[2].get_bool())
-            filter = filter | ISMINE_WATCH_ONLY;
+        include_watch_only = params[2].get_bool();
 
     bool has_filtered_address = false;
     CTxDestination filtered_address = CNoDestination();
@@ -1097,15 +1096,15 @@ static UniValue ListReceived(interfaces::Chain::Lock& locked_chain, CWallet * co
                 continue;
             }
 
-            isminefilter mine = IsMine(*pwallet, address);
-            if(!(mine & filter))
+            bool mine = IsMine(*pwallet, address);
+            if(!mine || (pwallet->HaveWatchOnly(txout.scriptPubKey) && !include_watch_only))
                 continue;
 
             tallyitem& item = mapTally[address];
             item.nAmount += txout.nValue;
             item.nConf = std::min(item.nConf, nDepth);
             item.txids.push_back(wtx.GetHash());
-            if (mine & ISMINE_WATCH_ONLY)
+            if (pwallet->HaveWatchOnly(txout.scriptPubKey))
                 item.fIsWatchonly = true;
         }
     }
@@ -1306,18 +1305,19 @@ static void MaybePushAddress(UniValue & entry, const CTxDestination &dest)
  * @param  nMinDepth      The minimum confirmation depth.
  * @param  fLong          Whether to include the JSON version of the transaction.
  * @param  ret            The UniValue into which the result is stored.
- * @param  filter_ismine  The "is mine" filter flags.
+ * @param  spendable      Include spendable transactions
+ * @param  watch_only     Include watch only transactions
  * @param  filter_label   Optional label string to filter incoming transactions.
  */
-static void ListTransactions(interfaces::Chain::Lock& locked_chain, CWallet* const pwallet, const CWalletTx& wtx, int nMinDepth, bool fLong, UniValue& ret, const isminefilter& filter_ismine, const std::string* filter_label) EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet)
+static void ListTransactions(interfaces::Chain::Lock& locked_chain, CWallet* const pwallet, const CWalletTx& wtx, int nMinDepth, bool fLong, UniValue& ret, bool spendable, bool watch_only, const std::string* filter_label) EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet)
 {
     CAmount nFee;
     std::list<COutputEntry> listReceived;
     std::list<COutputEntry> listSent;
 
-    wtx.GetAmounts(listReceived, listSent, nFee, filter_ismine);
+    wtx.GetAmounts(listReceived, listSent, nFee, spendable, watch_only);
 
-    bool involvesWatchonly = wtx.IsFromMe(ISMINE_WATCH_ONLY);
+    bool involvesWatchonly = wtx.IsFromMe(false, true);
 
     // Sent
     if (!filter_label)
@@ -1325,7 +1325,7 @@ static void ListTransactions(interfaces::Chain::Lock& locked_chain, CWallet* con
         for (const COutputEntry& s : listSent)
         {
             UniValue entry(UniValue::VOBJ);
-            if (involvesWatchonly || (::IsMine(*pwallet, s.destination) & ISMINE_WATCH_ONLY)) {
+            if (involvesWatchonly || pwallet->HaveWatchOnly(GetScriptForDestination(s.destination))) {
                 entry.pushKV("involvesWatchonly", true);
             }
             MaybePushAddress(entry, s.destination);
@@ -1356,7 +1356,7 @@ static void ListTransactions(interfaces::Chain::Lock& locked_chain, CWallet* con
                 continue;
             }
             UniValue entry(UniValue::VOBJ);
-            if (involvesWatchonly || (::IsMine(*pwallet, r.destination) & ISMINE_WATCH_ONLY)) {
+            if (involvesWatchonly || pwallet->HaveWatchOnly(GetScriptForDestination(r.destination))) {
                 entry.pushKV("involvesWatchonly", true);
             }
             MaybePushAddress(entry, r.destination);
@@ -1466,10 +1466,9 @@ UniValue listtransactions(const JSONRPCRequest& request)
     int nFrom = 0;
     if (!request.params[2].isNull())
         nFrom = request.params[2].get_int();
-    isminefilter filter = ISMINE_SPENDABLE;
+    bool include_watch_only = false;
     if(!request.params[3].isNull())
-        if(request.params[3].get_bool())
-            filter = filter | ISMINE_WATCH_ONLY;
+        include_watch_only = request.params[3].get_bool();
 
     if (nCount < 0)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Negative count");
@@ -1488,7 +1487,7 @@ UniValue listtransactions(const JSONRPCRequest& request)
         for (CWallet::TxItems::const_reverse_iterator it = txOrdered.rbegin(); it != txOrdered.rend(); ++it)
         {
             CWalletTx *const pwtx = (*it).second;
-            ListTransactions(*locked_chain, pwallet, *pwtx, 0, true, ret, filter, filter_label);
+            ListTransactions(*locked_chain, pwallet, *pwtx, 0, true, ret, true, include_watch_only, filter_label);
             if ((int)ret.size() >= (nCount+nFrom)) break;
         }
     }
@@ -1595,7 +1594,6 @@ static UniValue listsinceblock(const JSONRPCRequest& request)
     Optional<int> height = MakeOptional(false, int()); // Height of the specified block or the common ancestor, if the block provided was in a deactivated chain.
     Optional<int> altheight; // Height of the specified block, even if it's in a deactivated chain.
     int target_confirms = 1;
-    isminefilter filter = ISMINE_SPENDABLE;
 
     uint256 blockId;
     if (!request.params[0].isNull() && !request.params[0].get_str().empty()) {
@@ -1614,8 +1612,9 @@ static UniValue listsinceblock(const JSONRPCRequest& request)
         }
     }
 
+    bool include_watch_only = false;
     if (!request.params[2].isNull() && request.params[2].get_bool()) {
-        filter = filter | ISMINE_WATCH_ONLY;
+        include_watch_only = true;
     }
 
     bool include_removed = (request.params[3].isNull() || request.params[3].get_bool());
@@ -1629,7 +1628,7 @@ static UniValue listsinceblock(const JSONRPCRequest& request)
         CWalletTx tx = pairWtx.second;
 
         if (depth == -1 || tx.GetDepthInMainChain(*locked_chain) < depth) {
-            ListTransactions(*locked_chain, pwallet, tx, 0, true, transactions, filter, nullptr /* filter_label */);
+            ListTransactions(*locked_chain, pwallet, tx, 0, true, transactions, true, include_watch_only, nullptr /* filter_label */);
         }
     }
 
@@ -1646,7 +1645,7 @@ static UniValue listsinceblock(const JSONRPCRequest& request)
             if (it != pwallet->mapWallet.end()) {
                 // We want all transactions regardless of confirmation count to appear here,
                 // even negative confirmation ones, hence the big negative.
-                ListTransactions(*locked_chain, pwallet, it->second, -100000000, true, removed, filter, nullptr /* filter_label */);
+                ListTransactions(*locked_chain, pwallet, it->second, -100000000, true, removed, true, include_watch_only, nullptr /* filter_label */);
             }
         }
         blockId = block.hashPrevBlock;
@@ -1733,10 +1732,9 @@ static UniValue gettransaction(const JSONRPCRequest& request)
 
     uint256 hash(ParseHashV(request.params[0], "txid"));
 
-    isminefilter filter = ISMINE_SPENDABLE;
+    bool include_watch_only = false;
     if(!request.params[1].isNull())
-        if(request.params[1].get_bool())
-            filter = filter | ISMINE_WATCH_ONLY;
+        include_watch_only = request.params[1].get_bool();
 
     UniValue entry(UniValue::VOBJ);
     auto it = pwallet->mapWallet.find(hash);
@@ -1745,19 +1743,19 @@ static UniValue gettransaction(const JSONRPCRequest& request)
     }
     const CWalletTx& wtx = it->second;
 
-    CAmount nCredit = wtx.GetCredit(*locked_chain, filter);
-    CAmount nDebit = wtx.GetDebit(filter);
+    CAmount nCredit = wtx.GetCredit(*locked_chain, true, include_watch_only);
+    CAmount nDebit = wtx.GetDebit(true, include_watch_only);
     CAmount nNet = nCredit - nDebit;
-    CAmount nFee = (wtx.IsFromMe(filter) ? wtx.tx->GetValueOut() - nDebit : 0);
+    CAmount nFee = (wtx.IsFromMe(true, include_watch_only) ? wtx.tx->GetValueOut() - nDebit : 0);
 
     entry.pushKV("amount", ValueFromAmount(nNet - nFee));
-    if (wtx.IsFromMe(filter))
+    if (wtx.IsFromMe(true, include_watch_only))
         entry.pushKV("fee", ValueFromAmount(nFee));
 
     WalletTxToJSON(pwallet->chain(), *locked_chain, wtx, entry);
 
     UniValue details(UniValue::VARR);
-    ListTransactions(*locked_chain, pwallet, wtx, 0, false, details, filter, nullptr /* filter_label */);
+    ListTransactions(*locked_chain, pwallet, wtx, 0, false, details, true, include_watch_only, nullptr /* filter_label */);
     entry.pushKV("details", details);
 
     std::string strHex = EncodeHexTx(*wtx.tx, RPCSerializationFlags());
@@ -3647,14 +3645,13 @@ UniValue getaddressinfo(const JSONRPCRequest& request)
     CScript scriptPubKey = GetScriptForDestination(dest);
     ret.pushKV("scriptPubKey", HexStr(scriptPubKey.begin(), scriptPubKey.end()));
 
-    isminetype mine = IsMine(*pwallet, dest);
-    ret.pushKV("ismine", bool(mine & ISMINE_SPENDABLE));
+    ret.pushKV("ismine", pwallet->IsSpendable(scriptPubKey)); // TODO: ismine shouldn't just mean is spendable
     bool solvable = IsSolvable(*pwallet, scriptPubKey);
     ret.pushKV("solvable", solvable);
     if (solvable) {
        ret.pushKV("desc", InferDescriptor(scriptPubKey, *pwallet)->ToString());
     }
-    ret.pushKV("iswatchonly", bool(mine & ISMINE_WATCH_ONLY));
+    ret.pushKV("iswatchonly", pwallet->HaveWatchOnly(scriptPubKey));
     UniValue detail = DescribeWalletAddress(pwallet, dest);
     ret.pushKVs(detail);
     if (pwallet->mapAddressBook.count(dest)) {

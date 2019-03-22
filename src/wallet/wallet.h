@@ -502,14 +502,14 @@ public:
     }
 
     //! filter decides which addresses will count towards the debit
-    CAmount GetDebit(const isminefilter& filter) const;
-    CAmount GetCredit(interfaces::Chain::Lock& locked_chain, const isminefilter& filter) const;
+    CAmount GetDebit(bool spendable, bool watch_only) const;
+    CAmount GetCredit(interfaces::Chain::Lock& locked_chain, bool spendable, bool watch_only) const;
     CAmount GetImmatureCredit(interfaces::Chain::Lock& locked_chain, bool fUseCache=true) const;
     // TODO: Remove "NO_THREAD_SAFETY_ANALYSIS" and replace it with the correct
     // annotation "EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet)". The
     // annotation "NO_THREAD_SAFETY_ANALYSIS" was temporarily added to avoid
     // having to resolve the issue of member access into incomplete type CWallet.
-    CAmount GetAvailableCredit(interfaces::Chain::Lock& locked_chain, bool fUseCache=true, const isminefilter& filter=ISMINE_SPENDABLE) const NO_THREAD_SAFETY_ANALYSIS;
+    CAmount GetAvailableCredit(interfaces::Chain::Lock& locked_chain, bool fUseCache=true, bool spendable=true, bool watch_only=false) const NO_THREAD_SAFETY_ANALYSIS;
     CAmount GetImmatureWatchOnlyCredit(interfaces::Chain::Lock& locked_chain, const bool fUseCache=true) const;
     CAmount GetChange() const;
 
@@ -520,11 +520,11 @@ public:
     }
 
     void GetAmounts(std::list<COutputEntry>& listReceived,
-                    std::list<COutputEntry>& listSent, CAmount& nFee, const isminefilter& filter) const;
+                    std::list<COutputEntry>& listSent, CAmount& nFee, bool spendable, bool watch_only) const;
 
-    bool IsFromMe(const isminefilter& filter) const
+    bool IsFromMe(bool spendable, bool watch_only) const
     {
-        return (GetDebit(filter) > 0);
+        return (GetDebit(spendable, watch_only) > 0);
     }
 
     // True if only scriptSigs are different
@@ -955,12 +955,12 @@ public:
     void ResendWalletTransactions(interfaces::Chain::Lock& locked_chain, int64_t nBestBlockTime) override;
     // ResendWalletTransactionsBefore may only be called if fBroadcastTransactions!
     std::vector<uint256> ResendWalletTransactionsBefore(interfaces::Chain::Lock& locked_chain, int64_t nTime);
-    CAmount GetBalance(const isminefilter& filter=ISMINE_SPENDABLE, const int min_depth=0) const;
+    CAmount GetBalance(bool spendable=true, bool watch_only=false, const int min_depth=0) const;
     CAmount GetUnconfirmedBalance() const;
     CAmount GetImmatureBalance() const;
     CAmount GetUnconfirmedWatchOnlyBalance() const;
     CAmount GetImmatureWatchOnlyBalance() const;
-    CAmount GetLegacyBalance(const isminefilter& filter, int minDepth) const;
+    CAmount GetLegacyBalance(bool spendable, bool watch_only, int minDepth) const;
     CAmount GetAvailableBalance(const CCoinControl* coinControl = nullptr) const;
 
     OutputType TransactionChangeType(OutputType change_type, const std::vector<CRecipient>& vecSend);
@@ -1042,24 +1042,24 @@ public:
 
     std::set<CTxDestination> GetLabelAddresses(const std::string& label) const;
 
-    isminetype IsMine(const CTxIn& txin) const;
+    bool IsMine(const CTxIn& txin) const;
     /**
      * Returns amount of debit if the input matches the
      * filter, otherwise returns 0
      */
-    CAmount GetDebit(const CTxIn& txin, const isminefilter& filter) const;
-    isminetype IsMine(const CTxOut& txout) const;
-    CAmount GetCredit(const CTxOut& txout, const isminefilter& filter) const;
+    CAmount GetDebit(const CTxIn& txin, bool spendable, bool watch_only) const;
+    bool IsMine(const CTxOut& txout) const;
+    CAmount GetCredit(const CTxOut& txout, bool spendable, bool watch_only) const;
     bool IsChange(const CTxOut& txout) const;
     bool IsChange(const CScript& script) const;
     CAmount GetChange(const CTxOut& txout) const;
     bool IsMine(const CTransaction& tx) const;
     /** should probably be renamed to IsRelevantToMe */
     bool IsFromMe(const CTransaction& tx) const;
-    CAmount GetDebit(const CTransaction& tx, const isminefilter& filter) const;
+    CAmount GetDebit(const CTransaction& tx, bool spendable, bool watch_only) const;
     /** Returns whether all of the inputs match the filter */
-    bool IsAllFromMe(const CTransaction& tx, const isminefilter& filter) const;
-    CAmount GetCredit(const CTransaction& tx, const isminefilter& filter) const;
+    bool IsAllFromMe(const CTransaction& tx, bool spendable, bool watch_only) const;
+    CAmount GetCredit(const CTransaction& tx, bool spendable, bool watch_only) const;
     CAmount GetChange(const CTransaction& tx) const;
     void ChainStateFlushed(const CBlockLocator& loc) override;
 

@@ -74,23 +74,22 @@ WalletTx MakeWalletTx(interfaces::Chain::Lock& locked_chain, CWallet& wallet, co
     result.txin_is_mine.reserve(wtx.tx->vin.size());
     result.txin_is_watchonly.reserve(wtx.tx->vin.size());
     for (const auto& txin : wtx.tx->vin) {
-        result.txin_is_mine.emplace_back(wallet.IsMine(txin) != ISMINE_NO);
-        result.txin_is_watchonly.emplace_back(wallet.IsMine(txin) == ISMINE_WATCH_ONLY);
+        result.txin_is_mine.emplace_back(wallet.IsMine(txin));
+        result.txin_is_watchonly.emplace_back(wallet.HaveWatchOnly(txin));
     }
     result.txout_is_mine.reserve(wtx.tx->vout.size());
     result.txout_is_watchonly.reserve(wtx.tx->vout.size());
     result.txout_address.reserve(wtx.tx->vout.size());
     result.txout_address_is_mine.reserve(wtx.tx->vout.size());
     for (const auto& txout : wtx.tx->vout) {
-        result.txout_is_mine.emplace_back(wallet.IsMine(txout) != ISMINE_NO);
-        result.txout_is_watchonly.emplace_back(wallet.IsMine(txout) == ISMINE_WATCH_ONLY);
+        result.txout_is_mine.emplace_back(wallet.IsMine(txout));
+        result.txout_is_watchonly.emplace_back(wallet.HaveWatchOnly(txout.scriptPubKey));
         result.txout_address.emplace_back();
         result.txout_address_is_mine.emplace_back(ExtractDestination(txout.scriptPubKey, result.txout_address.back()) ?
-                                                      IsMine(wallet, result.txout_address.back()) != ISMINE_NO:
-                                                      false);
+                                                      bool(IsMine(wallet, result.txout_address.back())) : false);
     }
-    result.credit = wtx.GetCredit(locked_chain, ISMINE_ALL);
-    result.debit = wtx.GetDebit(ISMINE_ALL);
+    result.credit = wtx.GetCredit(locked_chain, true /* spendable */, true /* watch_only */);
+    result.debit = wtx.GetDebit(true /* spendable */, true /* watch_only */);
     result.change = wtx.GetChange();
     result.time = wtx.GetTxTime();
     result.value_map = wtx.mapValue;
@@ -157,8 +156,8 @@ public:
     }
     bool getPubKey(const CKeyID& address, CPubKey& pub_key) override { return m_wallet->GetPubKey(address, pub_key); }
     bool getPrivKey(const CKeyID& address, CKey& key) override { return m_wallet->GetKey(address, key); }
-    bool isSpendable(const CTxDestination& dest) override { return IsMine(*m_wallet, dest) & ISMINE_SPENDABLE; }
-    bool isSpendable(const CScript& dest) override { return IsMine(*m_wallet, dest) & ISMINE_SPENDABLE; }
+    bool isSpendable(const CScript& dest) override { return m_wallet->IsSpendable(dest); }
+    bool isSpendable(const CTxDestination& dest) override { return isSpendable(GetScriptForDestination(dest)); }
     bool haveWatchOnly() override { return m_wallet->HaveWatchOnly(); };
     bool setAddressBook(const CTxDestination& dest, const std::string& name, const std::string& purpose) override
     {
@@ -365,7 +364,7 @@ public:
         result.immature_balance = m_wallet->GetImmatureBalance();
         result.have_watch_only = m_wallet->HaveWatchOnly();
         if (result.have_watch_only) {
-            result.watch_only_balance = m_wallet->GetBalance(ISMINE_WATCH_ONLY);
+            result.watch_only_balance = m_wallet->GetBalance(false, true);
             result.unconfirmed_watch_only_balance = m_wallet->GetUnconfirmedWatchOnlyBalance();
             result.immature_watch_only_balance = m_wallet->GetImmatureWatchOnlyBalance();
         }
@@ -404,13 +403,13 @@ public:
     {
         auto locked_chain = m_wallet->chain().lock();
         LOCK(m_wallet->cs_wallet);
-        return m_wallet->GetDebit(txin, ISMINE_ALL);
+        return m_wallet->GetDebit(txin, true /* spendable */, true /* watch_only */);
     }
     CAmount getCredit(const CTxOut& txout) override
     {
         auto locked_chain = m_wallet->chain().lock();
         LOCK(m_wallet->cs_wallet);
-        return m_wallet->GetCredit(txout, ISMINE_ALL);
+        return m_wallet->GetCredit(txout, true /* spendable */, true /* watch_only */);
     }
     CoinsList listCoins() override
     {

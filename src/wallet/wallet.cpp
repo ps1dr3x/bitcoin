@@ -1445,7 +1445,7 @@ void CWallet::BlockUntilSyncedToCurrentChain() {
 }
 
 
-isminetype CWallet::IsMine(const CTxIn &txin) const
+bool CWallet::IsMine(const CTxIn &txin) const
 {
     {
         LOCK(cs_wallet);
@@ -1457,12 +1457,12 @@ isminetype CWallet::IsMine(const CTxIn &txin) const
                 return IsMine(prev.tx->vout[txin.prevout.n]);
         }
     }
-    return ISMINE_NO;
+    return false;
 }
 
 // Note that this function doesn't distinguish between a 0-valued input,
 // and a not-"is mine" (according to the filter) input.
-CAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter) const
+CAmount CWallet::GetDebit(const CTxIn &txin, bool spendable, bool watch_only) const
 {
     {
         LOCK(cs_wallet);
@@ -1470,24 +1470,36 @@ CAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter) const
         if (mi != mapWallet.end())
         {
             const CWalletTx& prev = (*mi).second;
-            if (txin.prevout.n < prev.tx->vout.size())
-                if (IsMine(prev.tx->vout[txin.prevout.n]) & filter)
-                    return prev.tx->vout[txin.prevout.n].nValue;
+            if (txin.prevout.n < prev.tx->vout.size()) {
+                const CTxOut& txout = prev.tx->vout[txin.prevout.n];
+                if (IsMine(txout)) {
+                    if ((spendable && IsSpendable(txout.scriptPubKey)) ||
+                        (watch_only && HaveWatchOnly(txout.scriptPubKey))) {
+                        return txout.nValue;
+                    }
+                }
+            }
         }
     }
     return 0;
 }
 
-isminetype CWallet::IsMine(const CTxOut& txout) const
+bool CWallet::IsMine(const CTxOut& txout) const
 {
     return ::IsMine(*this, txout.scriptPubKey);
 }
 
-CAmount CWallet::GetCredit(const CTxOut& txout, const isminefilter& filter) const
+CAmount CWallet::GetCredit(const CTxOut& txout, bool spendable, bool watch_only) const
 {
     if (!MoneyRange(txout.nValue))
         throw std::runtime_error(std::string(__func__) + ": value out of range");
-    return ((IsMine(txout) & filter) ? txout.nValue : 0);
+    if (IsMine(txout)) {
+        if ((spendable && IsSpendable(txout.scriptPubKey)) ||
+            (watch_only && HaveWatchOnly(txout.scriptPubKey))) {
+            return txout.nValue;
+        }
+    }
+    return 0;
 }
 
 bool CWallet::IsChange(const CTxOut& txout) const
@@ -1534,22 +1546,22 @@ bool CWallet::IsMine(const CTransaction& tx) const
 
 bool CWallet::IsFromMe(const CTransaction& tx) const
 {
-    return (GetDebit(tx, ISMINE_ALL) > 0);
+    return (GetDebit(tx, true /* spendable */, true /* watch_only */) > 0);
 }
 
-CAmount CWallet::GetDebit(const CTransaction& tx, const isminefilter& filter) const
+CAmount CWallet::GetDebit(const CTransaction& tx, bool spendable, bool watch_only) const
 {
     CAmount nDebit = 0;
     for (const CTxIn& txin : tx.vin)
     {
-        nDebit += GetDebit(txin, filter);
+        nDebit += GetDebit(txin, spendable, watch_only);
         if (!MoneyRange(nDebit))
             throw std::runtime_error(std::string(__func__) + ": value out of range");
     }
     return nDebit;
 }
 
-bool CWallet::IsAllFromMe(const CTransaction& tx, const isminefilter& filter) const
+bool CWallet::IsAllFromMe(const CTransaction& tx, bool spendable, bool watch_only) const
 {
     LOCK(cs_wallet);
 
@@ -1564,18 +1576,19 @@ bool CWallet::IsAllFromMe(const CTransaction& tx, const isminefilter& filter) co
         if (txin.prevout.n >= prev.tx->vout.size())
             return false; // invalid input!
 
-        if (!(IsMine(prev.tx->vout[txin.prevout.n]) & filter))
+        const CTxOut& txout = prev.tx->vout[txin.prevout.n];
+        if (!(IsMine(txout) && ((spendable && IsSpendable(txout.scriptPubKey)) || (watch_only && HaveWatchOnly(txout.scriptPubKey)))))
             return false;
     }
     return true;
 }
 
-CAmount CWallet::GetCredit(const CTransaction& tx, const isminefilter& filter) const
+CAmount CWallet::GetCredit(const CTransaction& tx, bool spendable, bool watch_only) const
 {
     CAmount nCredit = 0;
     for (const CTxOut& txout : tx.vout)
     {
-        nCredit += GetCredit(txout, filter);
+        nCredit += GetCredit(txout, spendable, watch_only);
         if (!MoneyRange(nCredit))
             throw std::runtime_error(std::string(__func__) + ": value out of range");
     }
@@ -1795,14 +1808,14 @@ int CalculateMaximumSignedInputSize(const CTxOut& txout, const CWallet* wallet, 
 }
 
 void CWalletTx::GetAmounts(std::list<COutputEntry>& listReceived,
-                           std::list<COutputEntry>& listSent, CAmount& nFee, const isminefilter& filter) const
+                           std::list<COutputEntry>& listSent, CAmount& nFee, bool spendable, bool watch_only) const
 {
     nFee = 0;
     listReceived.clear();
     listSent.clear();
 
     // Compute fee:
-    CAmount nDebit = GetDebit(filter);
+    CAmount nDebit = GetDebit(spendable, watch_only);
     if (nDebit > 0) // debit>0 means we signed/sent this transaction
     {
         CAmount nValueOut = tx->GetValueOut();
@@ -1813,7 +1826,7 @@ void CWalletTx::GetAmounts(std::list<COutputEntry>& listReceived,
     for (unsigned int i = 0; i < tx->vout.size(); ++i)
     {
         const CTxOut& txout = tx->vout[i];
-        isminetype fIsMine = pwallet->IsMine(txout);
+        bool fIsMine = pwallet->IsMine(txout);
         // Only need to handle txouts if AT LEAST one of these is true:
         //   1) they debit from us (sent)
         //   2) the output is to us (received)
@@ -1823,7 +1836,7 @@ void CWalletTx::GetAmounts(std::list<COutputEntry>& listReceived,
             if (pwallet->IsChange(txout))
                 continue;
         }
-        else if (!(fIsMine & filter))
+        else if (!(fIsMine && ((spendable && pwallet->IsSpendable(txout.scriptPubKey)) || (watch_only && pwallet->HaveWatchOnly(txout.scriptPubKey)))))
             continue;
 
         // In either case, we need to get the destination address
@@ -1843,7 +1856,7 @@ void CWalletTx::GetAmounts(std::list<COutputEntry>& listReceived,
             listSent.push_back(output);
 
         // If we are receiving the output, add it as a "received" entry
-        if (fIsMine & filter)
+        if (fIsMine && ((spendable && pwallet->IsSpendable(txout.scriptPubKey)) || (watch_only && pwallet->HaveWatchOnly(txout.scriptPubKey))))
             listReceived.push_back(output);
     }
 
@@ -2065,30 +2078,30 @@ std::set<uint256> CWalletTx::GetConflicts() const
     return result;
 }
 
-CAmount CWalletTx::GetDebit(const isminefilter& filter) const
+CAmount CWalletTx::GetDebit(bool spendable, bool watch_only) const
 {
     if (tx->vin.empty())
         return 0;
 
     CAmount debit = 0;
-    if(filter & ISMINE_SPENDABLE)
+    if(spendable)
     {
         if (fDebitCached)
             debit += nDebitCached;
         else
         {
-            nDebitCached = pwallet->GetDebit(*tx, ISMINE_SPENDABLE);
+            nDebitCached = pwallet->GetDebit(*tx, true /* spendable */, false /* watch_only */);
             fDebitCached = true;
             debit += nDebitCached;
         }
     }
-    if(filter & ISMINE_WATCH_ONLY)
+    if(watch_only)
     {
         if(fWatchDebitCached)
             debit += nWatchDebitCached;
         else
         {
-            nWatchDebitCached = pwallet->GetDebit(*tx, ISMINE_WATCH_ONLY);
+            nWatchDebitCached = pwallet->GetDebit(*tx, false /* spendable */, true /* watch_only */);
             fWatchDebitCached = true;
             debit += nWatchDebitCached;
         }
@@ -2096,32 +2109,32 @@ CAmount CWalletTx::GetDebit(const isminefilter& filter) const
     return debit;
 }
 
-CAmount CWalletTx::GetCredit(interfaces::Chain::Lock& locked_chain, const isminefilter& filter) const
+CAmount CWalletTx::GetCredit(interfaces::Chain::Lock& locked_chain, bool spendable, bool watch_only) const
 {
     // Must wait until coinbase is safely deep enough in the chain before valuing it
     if (IsImmatureCoinBase(locked_chain))
         return 0;
 
     CAmount credit = 0;
-    if (filter & ISMINE_SPENDABLE)
+    if(spendable)
     {
         // GetBalance can assume transactions in mapWallet won't change
         if (fCreditCached)
             credit += nCreditCached;
         else
         {
-            nCreditCached = pwallet->GetCredit(*tx, ISMINE_SPENDABLE);
+            nCreditCached = pwallet->GetCredit(*tx, true /* spendable */, false /* watch_only */);
             fCreditCached = true;
             credit += nCreditCached;
         }
     }
-    if (filter & ISMINE_WATCH_ONLY)
+    if(watch_only)
     {
         if (fWatchCreditCached)
             credit += nWatchCreditCached;
         else
         {
-            nWatchCreditCached = pwallet->GetCredit(*tx, ISMINE_WATCH_ONLY);
+            nWatchCreditCached = pwallet->GetCredit(*tx, false /* spendable */, true /* watch_only */);
             fWatchCreditCached = true;
             credit += nWatchCreditCached;
         }
@@ -2134,7 +2147,7 @@ CAmount CWalletTx::GetImmatureCredit(interfaces::Chain::Lock& locked_chain, bool
     if (IsImmatureCoinBase(locked_chain) && IsInMainChain(locked_chain)) {
         if (fUseCache && fImmatureCreditCached)
             return nImmatureCreditCached;
-        nImmatureCreditCached = pwallet->GetCredit(*tx, ISMINE_SPENDABLE);
+        nImmatureCreditCached = pwallet->GetCredit(*tx, true /* spendable */, false /* watch_only */);
         fImmatureCreditCached = true;
         return nImmatureCreditCached;
     }
@@ -2142,7 +2155,7 @@ CAmount CWalletTx::GetImmatureCredit(interfaces::Chain::Lock& locked_chain, bool
     return 0;
 }
 
-CAmount CWalletTx::GetAvailableCredit(interfaces::Chain::Lock& locked_chain, bool fUseCache, const isminefilter& filter) const
+CAmount CWalletTx::GetAvailableCredit(interfaces::Chain::Lock& locked_chain, bool fUseCache, bool spendable, bool watch_only) const
 {
     if (pwallet == nullptr)
         return 0;
@@ -2154,10 +2167,10 @@ CAmount CWalletTx::GetAvailableCredit(interfaces::Chain::Lock& locked_chain, boo
     CAmount* cache = nullptr;
     bool* cache_used = nullptr;
 
-    if (filter == ISMINE_SPENDABLE) {
+    if (spendable) {
         cache = &nAvailableCreditCached;
         cache_used = &fAvailableCreditCached;
-    } else if (filter == ISMINE_WATCH_ONLY) {
+    } else if (watch_only) {
         cache = &nAvailableWatchCreditCached;
         cache_used = &fAvailableWatchCreditCached;
     }
@@ -2173,7 +2186,7 @@ CAmount CWalletTx::GetAvailableCredit(interfaces::Chain::Lock& locked_chain, boo
         if (!pwallet->IsSpent(locked_chain, hashTx, i))
         {
             const CTxOut &txout = tx->vout[i];
-            nCredit += pwallet->GetCredit(txout, filter);
+            nCredit += pwallet->GetCredit(txout, spendable, watch_only);
             if (!MoneyRange(nCredit))
                 throw std::runtime_error(std::string(__func__) + " : value out of range");
         }
@@ -2192,7 +2205,7 @@ CAmount CWalletTx::GetImmatureWatchOnlyCredit(interfaces::Chain::Lock& locked_ch
     if (IsImmatureCoinBase(locked_chain) && IsInMainChain(locked_chain)) {
         if (fUseCache && fImmatureWatchCreditCached)
             return nImmatureWatchCreditCached;
-        nImmatureWatchCreditCached = pwallet->GetCredit(*tx, ISMINE_WATCH_ONLY);
+        nImmatureWatchCreditCached = pwallet->GetCredit(*tx, false /* spendable */, true /* watch_only */);
         fImmatureWatchCreditCached = true;
         return nImmatureWatchCreditCached;
     }
@@ -2225,7 +2238,7 @@ bool CWalletTx::IsTrusted(interfaces::Chain::Lock& locked_chain) const
         return true;
     if (nDepth < 0)
         return false;
-    if (!pwallet->m_spend_zero_conf_change || !IsFromMe(ISMINE_ALL)) // using wtx's cached debit
+    if (!pwallet->m_spend_zero_conf_change || !IsFromMe(true /* spendable */, true /* watch_only */)) // using wtx's cached debit
         return false;
 
     // Don't trust unconfirmed transactions from us unless they are in the mempool.
@@ -2240,7 +2253,7 @@ bool CWalletTx::IsTrusted(interfaces::Chain::Lock& locked_chain) const
         if (parent == nullptr)
             return false;
         const CTxOut& parentOut = parent->tx->vout[txin.prevout.n];
-        if (pwallet->IsMine(parentOut) != ISMINE_SPENDABLE)
+        if (pwallet->IsMine(parentOut) && !pwallet->IsSpendable(parentOut.scriptPubKey))
             return false;
     }
     return true;
@@ -2315,7 +2328,7 @@ void CWallet::ResendWalletTransactions(interfaces::Chain::Lock& locked_chain, in
  */
 
 
-CAmount CWallet::GetBalance(const isminefilter& filter, const int min_depth) const
+CAmount CWallet::GetBalance(bool spendable, bool watch_only, const int min_depth) const
 {
     CAmount nTotal = 0;
     {
@@ -2325,7 +2338,7 @@ CAmount CWallet::GetBalance(const isminefilter& filter, const int min_depth) con
         {
             const CWalletTx* pcoin = &entry.second;
             if (pcoin->IsTrusted(*locked_chain) && pcoin->GetDepthInMainChain(*locked_chain) >= min_depth) {
-                nTotal += pcoin->GetAvailableCredit(*locked_chain, true, filter);
+                nTotal += pcoin->GetAvailableCredit(*locked_chain, true, spendable, watch_only);
             }
         }
     }
@@ -2374,7 +2387,7 @@ CAmount CWallet::GetUnconfirmedWatchOnlyBalance() const
         {
             const CWalletTx* pcoin = &entry.second;
             if (!pcoin->IsTrusted(*locked_chain) && pcoin->GetDepthInMainChain(*locked_chain) == 0 && pcoin->InMempool())
-                nTotal += pcoin->GetAvailableCredit(*locked_chain, true, ISMINE_WATCH_ONLY);
+                nTotal += pcoin->GetAvailableCredit(*locked_chain, true, false, true);
         }
     }
     return nTotal;
@@ -2401,7 +2414,7 @@ CAmount CWallet::GetImmatureWatchOnlyBalance() const
 // wallet, and then subtracts the values of TxIns spending from the wallet. This
 // also has fewer restrictions on which unconfirmed transactions are considered
 // trusted.
-CAmount CWallet::GetLegacyBalance(const isminefilter& filter, int minDepth) const
+CAmount CWallet::GetLegacyBalance(bool spendable, bool watch_only, int minDepth) const
 {
     auto locked_chain = chain().lock();
     LOCK(cs_wallet);
@@ -2416,12 +2429,12 @@ CAmount CWallet::GetLegacyBalance(const isminefilter& filter, int minDepth) cons
 
         // Loop through tx outputs and add incoming payments. For outgoing txs,
         // treat change outputs specially, as part of the amount debited.
-        CAmount debit = wtx.GetDebit(filter);
+        CAmount debit = wtx.GetDebit(spendable, watch_only);
         const bool outgoing = debit > 0;
         for (const CTxOut& out : wtx.tx->vout) {
             if (outgoing && IsChange(out)) {
                 debit -= out.nValue;
-            } else if (IsMine(out) & filter && depth >= minDepth) {
+            } else if (IsMine(out) && ((spendable && IsSpendable(out.scriptPubKey)) || (watch_only && HaveWatchOnly(out.scriptPubKey))) && depth >= minDepth) {
                 balance += out.nValue;
             }
         }
@@ -2532,14 +2545,14 @@ void CWallet::AvailableCoins(interfaces::Chain::Lock& locked_chain, std::vector<
             if (IsSpent(locked_chain, wtxid, i))
                 continue;
 
-            isminetype mine = IsMine(pcoin->tx->vout[i]);
+            bool mine = IsMine(pcoin->tx->vout[i]);
 
-            if (mine == ISMINE_NO) {
+            if (!mine) {
                 continue;
             }
 
             bool solvable = IsSolvable(*this, pcoin->tx->vout[i].scriptPubKey);
-            bool spendable = ((mine & ISMINE_SPENDABLE) != ISMINE_NO) || (((mine & ISMINE_WATCH_ONLY) != ISMINE_NO) && (coinControl && coinControl->fAllowWatchOnly && solvable));
+            bool spendable = IsSpendable(pcoin->tx->vout[i].scriptPubKey) || (HaveWatchOnly(pcoin->tx->vout[i].scriptPubKey) && (coinControl && coinControl->fAllowWatchOnly && solvable));
 
             vCoins.push_back(COutput(pcoin, i, nDepth, spendable, solvable, safeTx, (coinControl && coinControl->fAllowWatchOnly)));
 
@@ -2584,7 +2597,7 @@ std::map<CTxDestination, std::vector<COutput>> CWallet::ListCoins(interfaces::Ch
         if (it != mapWallet.end()) {
             int depth = it->second.GetDepthInMainChain(locked_chain);
             if (depth >= 0 && output.n < it->second.tx->vout.size() &&
-                IsMine(it->second.tx->vout[output.n]) == ISMINE_SPENDABLE) {
+                IsMine(it->second.tx->vout[output.n]) && IsSpendable(it->second.tx->vout[output.n].scriptPubKey)) {
                 CTxDestination address;
                 if (ExtractDestination(FindNonChangeParentOutput(*it->second.tx, output.n).scriptPubKey, address)) {
                     result[address].emplace_back(
@@ -3435,7 +3448,7 @@ bool CWallet::SetAddressBook(const CTxDestination& address, const std::string& s
         if (!strPurpose.empty()) /* update purpose only if requested */
             mapAddressBook[address].purpose = strPurpose;
     }
-    NotifyAddressBookChanged(this, address, strName, ::IsMine(*this, address) != ISMINE_NO,
+    NotifyAddressBookChanged(this, address, strName, ::IsMine(*this, address),
                              strPurpose, (fUpdated ? CT_UPDATED : CT_NEW) );
     if (!strPurpose.empty() && !WalletBatch(*database).WritePurpose(EncodeDestination(address), strPurpose))
         return false;
@@ -3456,7 +3469,7 @@ bool CWallet::DelAddressBook(const CTxDestination& address)
         mapAddressBook.erase(address);
     }
 
-    NotifyAddressBookChanged(this, address, "", ::IsMine(*this, address) != ISMINE_NO, "", CT_DELETED);
+    NotifyAddressBookChanged(this, address, "", ::IsMine(*this, address), "", CT_DELETED);
 
     WalletBatch(*database).ErasePurpose(EncodeDestination(address));
     return WalletBatch(*database).EraseName(EncodeDestination(address));
@@ -3756,7 +3769,7 @@ std::map<CTxDestination, CAmount> CWallet::GetAddressBalances(interfaces::Chain:
                 continue;
 
             int nDepth = pcoin->GetDepthInMainChain(locked_chain);
-            if (nDepth < (pcoin->IsFromMe(ISMINE_ALL) ? 0 : 1))
+            if (nDepth < (pcoin->IsFromMe(true /* spendable */, true /* watch_only */) ? 0 : 1))
                 continue;
 
             for (unsigned int i = 0; i < pcoin->tx->vout.size(); i++)
@@ -4651,9 +4664,9 @@ std::vector<OutputGroup> CWallet::GroupOutputs(const std::vector<COutput>& outpu
                     groups.push_back(gmap[dst]);
                     gmap.erase(dst);
                 }
-                gmap[dst].Insert(input_coin, output.nDepth, output.tx->IsFromMe(ISMINE_ALL), ancestors, descendants);
+                gmap[dst].Insert(input_coin, output.nDepth, output.tx->IsFromMe(true /* spendable */, true /* watch_only */), ancestors, descendants);
             } else {
-                groups.emplace_back(input_coin, output.nDepth, output.tx->IsFromMe(ISMINE_ALL), ancestors, descendants);
+                groups.emplace_back(input_coin, output.nDepth, output.tx->IsFromMe(true /* spendable */, true /* watch_only */), ancestors, descendants);
             }
         }
     }

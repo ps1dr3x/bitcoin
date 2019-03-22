@@ -50,7 +50,7 @@ static feebumper::Result PreconditionChecks(interfaces::Chain::Lock& locked_chai
 
     // check that original tx consists entirely of our inputs
     // if not, we can't bump the fee, because the wallet has no way of knowing the value of the other inputs (thus the fee)
-    if (!wallet->IsAllFromMe(*wtx.tx, ISMINE_SPENDABLE)) {
+    if (!wallet->IsAllFromMe(*wtx.tx, true, false)) {
         errors.push_back("Transaction contains inputs that don't belong to this wallet");
         return feebumper::Result::WALLET_ERROR;
     }
@@ -117,7 +117,7 @@ Result CreateTransaction(const CWallet* wallet, const uint256& txid, const CCoin
     }
 
     // calculate the old fee and fee-rate
-    old_fee = wtx.GetDebit(ISMINE_SPENDABLE) - wtx.tx->GetValueOut();
+    old_fee = wtx.GetDebit(true, false) - wtx.tx->GetValueOut();
     CFeeRate nOldFeeRate(old_fee, txSize);
     CFeeRate nNewFeeRate;
     // The wallet uses a conservative WALLET_INCREMENTAL_RELAY_FEE value to
