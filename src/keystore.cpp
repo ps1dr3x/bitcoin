@@ -7,7 +7,7 @@
 
 #include <util/system.h>
 
-void CBasicKeyStore::ImplicitlyLearnRelatedKeyScripts(const CPubKey& pubkey)
+void CBasicKeyStore::ImplicitlyLearnRelatedKeyScripts(const CPubKey& pubkey, bool watch_only)
 {
     AssertLockHeld(cs_KeyStore);
     CKeyID key_id = pubkey.GetID();
@@ -28,6 +28,9 @@ void CBasicKeyStore::ImplicitlyLearnRelatedKeyScripts(const CPubKey& pubkey)
         CScript script = GetScriptForDestination(WitnessV0KeyHash(key_id));
         // This does not use AddCScript, as it may be overridden.
         CScriptID id(script);
+        if (watch_only) {
+            setWatchOnly.insert(script);
+        }
         mapScripts[id] = std::move(script);
     }
 }
@@ -144,7 +147,7 @@ bool CBasicKeyStore::AddWatchOnly(const CScript &dest)
     CPubKey pubKey;
     if (ExtractPubKey(dest, pubKey)) {
         mapWatchKeys[pubKey.GetID()] = pubKey;
-        ImplicitlyLearnRelatedKeyScripts(pubKey);
+        ImplicitlyLearnRelatedKeyScripts(pubKey, true);
     }
     return true;
 }
