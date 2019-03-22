@@ -902,6 +902,9 @@ public:
     bool RemoveWatchOnly(const CScript &dest) override EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     //! Adds a watch-only address to the store, without saving it to disk (used by LoadWallet)
     bool LoadWatchOnly(const CScript &dest);
+    //! Whether the input spends an output that was watch only
+    bool HaveWatchOnly(const CTxIn &txin) const;
+    using CBasicKeyStore::HaveWatchOnly;
 
     //! Holds a timestamp at which point the wallet is scheduled (externally) to be relocked. Caller must arrange for actual relocking to occur via Lock().
     int64_t nRelockTime = 0;

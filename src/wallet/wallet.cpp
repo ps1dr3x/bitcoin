@@ -474,6 +474,21 @@ bool CWallet::AddWatchOnly(const CScript& dest, int64_t nCreateTime)
     return AddWatchOnly(dest);
 }
 
+bool CWallet::HaveWatchOnly(const CTxIn &txin) const
+{
+    {
+        LOCK(cs_wallet);
+        std::map<uint256, CWalletTx>::const_iterator mi = mapWallet.find(txin.prevout.hash);
+        if (mi != mapWallet.end())
+        {
+            const CWalletTx& prev = (*mi).second;
+            if (txin.prevout.n < prev.tx->vout.size())
+                return HaveWatchOnly(prev.tx->vout[txin.prevout.n].scriptPubKey);
+        }
+    }
+    return false;
+}
+
 bool CWallet::RemoveWatchOnly(const CScript &dest)
 {
     AssertLockHeld(cs_wallet);
