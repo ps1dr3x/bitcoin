@@ -1290,7 +1290,7 @@ static UniValue ProcessImport(CWallet * const pwallet, const UniValue& data, con
         }
 
         for (const CScript& script : script_pub_keys) {
-            if (!have_solving_data || !::IsMine(*pwallet, script)) { // Always call AddWatchOnly for non-solvable watch-only, so that watch timestamp gets updated
+            if (!have_solving_data || !IsMine(*pwallet, script)) { // Always call AddWatchOnly for non-solvable watch-only, so that watch timestamp gets updated
                 if (!pwallet->AddWatchOnly(script, timestamp)) {
                     throw JSONRPCError(RPC_WALLET_ERROR, "Error adding address to wallet");
                 }
