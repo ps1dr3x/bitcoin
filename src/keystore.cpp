@@ -5,6 +5,7 @@
 
 #include <keystore.h>
 
+#include <outputtype.h>
 #include <util/system.h>
 
 void CBasicKeyStore::ImplicitlyLearnRelatedKeyScripts(const CPubKey& pubkey, bool watch_only)
@@ -24,6 +25,7 @@ void CBasicKeyStore::ImplicitlyLearnRelatedKeyScripts(const CPubKey& pubkey, boo
     // "Implicitly" refers to fact that scripts are derived automatically from
     // existing keys, and are present in memory, even without being explicitly
     // loaded (e.g. from a file).
+    // Also add scriptPubKeys that are being tracked
     if (pubkey.IsCompressed()) {
         CScript script = GetScriptForDestination(WitnessV0KeyHash(key_id));
         // This does not use AddCScript, as it may be overridden.
@@ -32,6 +34,18 @@ void CBasicKeyStore::ImplicitlyLearnRelatedKeyScripts(const CPubKey& pubkey, boo
             setWatchOnly.insert(script);
         }
         mapScripts[id] = std::move(script);
+    }
+    for (const auto& dest : GetAllDestinationsForKey(pubkey)) {
+        if (watch_only) {
+            setWatchOnly.insert(GetScriptForDestination(dest));
+        } else {
+            m_set_scriptPubKey.insert(GetScriptForDestination(dest));
+        }
+    }
+    if (watch_only) {
+        setWatchOnly.insert(CScript() << ToByteVector(pubkey) << OP_CHECKSIG);
+    } else {
+        m_set_scriptPubKey.insert(CScript() << ToByteVector(pubkey) << OP_CHECKSIG);
     }
 }
 
@@ -159,6 +173,9 @@ bool CBasicKeyStore::RemoveWatchOnly(const CScript &dest)
     CPubKey pubKey;
     if (ExtractPubKey(dest, pubKey)) {
         mapWatchKeys.erase(pubKey.GetID());
+        for (const auto& dest : GetAllDestinationsForKey(pubKey)) {
+            setWatchOnly.erase(GetScriptForDestination(dest));
+        }
     }
     // Related CScripts are not removed; having superfluous scripts around is
     // harmless (see comment in ImplicitlyLearnRelatedKeyScripts).
@@ -175,6 +192,19 @@ bool CBasicKeyStore::HaveWatchOnly() const
 {
     LOCK(cs_KeyStore);
     return (!setWatchOnly.empty());
+}
+
+bool CBasicKeyStore::HaveScriptPubKey(const CScript& script) const
+{
+    LOCK(cs_KeyStore);
+    return m_set_scriptPubKey.count(script) > 0;
+}
+
+bool CBasicKeyStore::AddScriptPubKey(const CScript& script)
+{
+    LOCK(cs_KeyStore);
+    m_set_scriptPubKey.insert(script);
+    return true;
 }
 
 CKeyID GetKeyForDestination(const CKeyStore& store, const CTxDestination& dest)

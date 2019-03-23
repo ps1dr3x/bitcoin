@@ -79,23 +79,32 @@ CTxDestination AddAndGetDestinationForScript(CKeyStore& keystore, const CScript&
     keystore.AddCScript(script);
     // Note that scripts over 520 bytes are not yet supported.
     switch (type) {
-    case OutputType::LEGACY:
-        return CScriptID(script);
+    case OutputType::LEGACY: {
+        CScriptID script_id = CScriptID(script);
+        keystore.AddScriptPubKey(GetScriptForDestination(script_id));
+        return script_id;
+    }
     case OutputType::P2SH_SEGWIT:
     case OutputType::BECH32: {
         CTxDestination witdest = WitnessV0ScriptHash(script);
         CScript witprog = GetScriptForDestination(witdest);
         // Check if the resulting program is solvable (i.e. doesn't use an uncompressed key)
-        if (!IsSolvable(keystore, witprog)) return CScriptID(script);
+        if (!IsSolvable(keystore, witprog)) {
+            CScriptID script_id = CScriptID(script);
+            keystore.AddScriptPubKey(GetScriptForDestination(script_id));
+            return script_id;
+        }
         // Add the redeemscript, so that P2WSH and P2SH-P2WSH outputs are recognized as ours.
         keystore.AddCScript(witprog);
         if (type == OutputType::BECH32) {
+            keystore.AddScriptPubKey(GetScriptForDestination(witdest));
             return witdest;
         } else {
-            return CScriptID(witprog);
+            CScriptID script_id = CScriptID(witprog);
+            keystore.AddScriptPubKey(GetScriptForDestination(script_id));
+            return script_id;
         }
     }
     default: assert(false);
     }
 }
-
