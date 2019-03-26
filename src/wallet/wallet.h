@@ -16,6 +16,7 @@
 #include <ui_interface.h>
 #include <util/strencodings.h>
 #include <validationinterface.h>
+#include <script/descriptor.h>
 #include <script/ismine.h>
 #include <script/sign.h>
 #include <util/system.h>
@@ -619,6 +620,40 @@ public:
         READWRITE(nTimeExpires);
         READWRITE(LIMITED_STRING(strComment, 65536));
     }
+};
+
+/** Descriptor with some wallet metadata */
+class WalletDescriptor
+{
+public:
+    std::shared_ptr<Descriptor> descriptor;
+    uint64_t creation_time;
+    int32_t range_start; // First item in range; start of range, inclusive, i.e. [range_start, range_end)
+    int32_t range_end; // Item after the last; end of range, exclusive, i.e. [range_start, range_end)
+    int32_t next_index; // Position of the next item to generate
+    std::vector<std::vector<unsigned char>> cache;
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        if (ser_action.ForRead()) {
+            std::string desc;
+            READWRITE(desc);
+            FlatSigningProvider keys;
+            descriptor = std::move(Parse(desc, keys, true));
+        } else {
+            READWRITE(descriptor->ToString());
+        }
+        READWRITE(creation_time);
+        READWRITE(next_index);
+        READWRITE(range_start);
+        READWRITE(range_end);
+        READWRITE(cache);
+    }
+
+    WalletDescriptor() {}
+    WalletDescriptor(std::shared_ptr<Descriptor> descriptor, uint64_t creation_time, int32_t range_start, int32_t range_end, int32_t next_index) : descriptor(descriptor), creation_time(creation_time), range_start(range_start), range_end(range_end), next_index(next_index) {}
 };
 
 struct CoinSelectionParams
