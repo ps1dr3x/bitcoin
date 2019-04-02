@@ -1530,6 +1530,16 @@ void CWallet::SetHDSeed(const CPubKey& seed)
     CHDChain newHdChain;
     newHdChain.nVersion = CanSupportFeature(FEATURE_HD_SPLIT) ? CHDChain::VERSION_HD_CHAIN_SPLIT : CHDChain::VERSION_HD_BASE;
     newHdChain.seed_id = seed.GetID();
+
+    // Get master fingerprint
+    CKey seed_key;
+    assert(GetKey(seed.GetID(), seed_key));
+    CExtKey master_key;
+    master_key.SetSeed(seed_key.begin(), seed_key.size());
+    CKeyID master_id = master_key.key.GetPubKey().GetID();
+    std::copy(master_id.begin(), master_id.begin() + 4, newHdChain.fingerprint);
+    newHdChain.has_fingerprint = true;
+
     SetHDChain(newHdChain, false);
     NotifyCanGetAddressesChanged();
     UnsetWalletFlag(WALLET_FLAG_BLANK_WALLET);

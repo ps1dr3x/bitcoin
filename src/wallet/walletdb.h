@@ -64,10 +64,13 @@ public:
     uint32_t nExternalChainCounter;
     uint32_t nInternalChainCounter;
     CKeyID seed_id; //!< seed hash160
+    unsigned char fingerprint[4]; //!< First 32 bits of the Hash160 of the public key produced by this seed
+    bool has_fingerprint = false; //!< Whether the fingerprint is useful
 
     static const int VERSION_HD_BASE        = 1;
     static const int VERSION_HD_CHAIN_SPLIT = 2;
-    static const int CURRENT_VERSION        = VERSION_HD_CHAIN_SPLIT;
+    static const int VERSION_MASTER_FINGERPRINT = 3;
+    static const int CURRENT_VERSION        = VERSION_MASTER_FINGERPRINT;
     int nVersion;
 
     CHDChain() { SetNull(); }
@@ -80,6 +83,9 @@ public:
         READWRITE(seed_id);
         if (this->nVersion >= VERSION_HD_CHAIN_SPLIT)
             READWRITE(nInternalChainCounter);
+        if (this->nVersion >= VERSION_MASTER_FINGERPRINT)
+            READWRITE(fingerprint);
+            READWRITE(has_fingerprint);
     }
 
     void SetNull()
@@ -88,6 +94,7 @@ public:
         nExternalChainCounter = 0;
         nInternalChainCounter = 0;
         seed_id.SetNull();
+        has_fingerprint = false;
     }
 };
 
