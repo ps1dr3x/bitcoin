@@ -1263,6 +1263,7 @@ static UniValue ProcessImport(CWallet * const pwallet, const UniValue& data, con
                 throw JSONRPCError(RPC_WALLET_ERROR, "Error adding script to wallet");
              }
          }
+         WalletBatch batch(pwallet->GetDBHandle());
          for (const auto& entry : privkey_map) {
              const CKey& key = entry.second;
              CPubKey pubkey = key.GetPubKey();
@@ -1270,7 +1271,7 @@ static UniValue ProcessImport(CWallet * const pwallet, const UniValue& data, con
              assert(key.VerifyPubKey(pubkey));
              pwallet->mapKeyMetadata[id].nCreateTime = timestamp;
              // If the private key is not present in the wallet, insert it.
-             if (!pwallet->HaveKey(id) && !pwallet->AddKeyPubKey(key, pubkey)) {
+             if (!pwallet->HaveKey(id) && !pwallet->AddKeyPubKeyWithDB(batch, key, pubkey)) {
                  throw JSONRPCError(RPC_WALLET_ERROR, "Error adding key to wallet");
              }
              pwallet->UpdateTimeFirstKey(timestamp);
@@ -1282,24 +1283,24 @@ static UniValue ProcessImport(CWallet * const pwallet, const UniValue& data, con
             }
              const CPubKey& pubkey = entry->second;
              CPubKey temp;
-             if (!pwallet->GetPubKey(id, temp) && !pwallet->AddWatchOnly(GetScriptForRawPubKey(pubkey), timestamp)) {
+             if (!pwallet->GetPubKey(id, temp) && !pwallet->AddWatchOnlyWithDB(batch, GetScriptForRawPubKey(pubkey), timestamp)) {
                 throw JSONRPCError(RPC_WALLET_ERROR, "Error adding address to wallet");
             }
             const auto& key_orig_it = import_data.key_origins.find(id);
             if (key_orig_it != import_data.key_origins.end()) {
-                pwallet->AddKeyOrigin(pubkey, key_orig_it->second);
+                pwallet->AddKeyOriginWithDB(batch, pubkey, key_orig_it->second);
             }
             pwallet->mapKeyMetadata[id].nCreateTime = timestamp;
 
             // Add to keypool only works with pubkeys
             if (add_keypool) {
-                pwallet->AddKeypoolPubkey(pubkey, internal);
+                pwallet->AddKeypoolPubkeyWithDB(pubkey, internal, batch);
             }
         }
 
         for (const CScript& script : script_pub_keys) {
             if (!have_solving_data || !::IsMine(*pwallet, script)) { // Always call AddWatchOnly for non-solvable watch-only, so that watch timestamp gets updated
-                if (!pwallet->AddWatchOnly(script, timestamp)) {
+                if (!pwallet->AddWatchOnlyWithDB(batch, script, timestamp)) {
                     throw JSONRPCError(RPC_WALLET_ERROR, "Error adding address to wallet");
                 }
             }
