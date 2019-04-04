@@ -1612,6 +1612,69 @@ bool CWallet::DummySignTx(CMutableTransaction &txNew, const std::vector<CTxOut> 
     return true;
 }
 
+bool CWallet::ImportPrivKeys(const std::map<CKeyID, CKey>& privkey_map, const int64_t timestamp)
+{
+    WalletBatch batch(*database);
+    for (const auto& entry : privkey_map) {
+        const CKey& key = entry.second;
+        CPubKey pubkey = key.GetPubKey();
+        const CKeyID& id = entry.first;
+        assert(key.VerifyPubKey(pubkey));
+        mapKeyMetadata[id].nCreateTime = timestamp;
+        // If the private key is not present in the wallet, insert it.
+        if (!HaveKey(id) && !AddKeyPubKeyWithDB(batch, key, pubkey)) {
+            return false;
+        }
+        UpdateTimeFirstKey(timestamp);
+    }
+    return true;
+}
+
+bool CWallet::ImportPubKeys(const std::vector<CKeyID>& ordered_pubkeys, const std::map<CKeyID, CPubKey>& pubkey_map, const std::map<CKeyID, KeyOriginInfo>& key_origins, const bool add_keypool, const bool internal, const int64_t timestamp)
+{
+    WalletBatch batch(*database);
+    for (const CKeyID& id : ordered_pubkeys) {
+        auto entry = pubkey_map.find(id);
+        if (entry == pubkey_map.end()) {
+            continue;
+        }
+        const CPubKey& pubkey = entry->second;
+        CPubKey temp;
+        if (!GetPubKey(id, temp) && !AddWatchOnlyWithDB(batch, GetScriptForRawPubKey(pubkey), timestamp)) {
+            return false;
+        }
+        const auto& key_orig_it = key_origins.find(id);
+        if (key_orig_it != key_origins.end()) {
+            AddKeyOriginWithDB(batch, pubkey, key_orig_it->second);
+        }
+        mapKeyMetadata[id].nCreateTime = timestamp;
+
+        // Add to keypool only works with pubkeys
+        if (add_keypool) {
+            AddKeypoolPubkeyWithDB(pubkey, internal, batch);
+        }
+    }
+    return true;
+}
+
+bool CWallet::ImportScriptPubKeys(const std::string& label, const std::set<CScript>& script_pub_keys, const bool have_solving_data, const bool internal, const int64_t timestamp)
+{
+    WalletBatch batch(*database);
+    for (const CScript& script : script_pub_keys) {
+        if (!have_solving_data || !::IsMine(*this, script)) { // Always call AddWatchOnly for non-solvable watch-only, so that watch timestamp gets updated
+            if (!AddWatchOnlyWithDB(batch, script, timestamp)) {
+                return false;
+            }
+        }
+        CTxDestination dest;
+        ExtractDestination(script, dest);
+        if (!internal && IsValidDestination(dest)) {
+            SetAddressBook(dest, label, "receive");
+        }
+    }
+    return true;
+}
+
 int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *wallet, bool use_max_sig)
 {
     std::vector<CTxOut> txouts;
