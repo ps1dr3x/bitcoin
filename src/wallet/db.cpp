@@ -614,7 +614,9 @@ void BerkeleyBatch::Flush()
     if (fReadOnly)
         nMinutes = 1;
 
-    env->dbenv->txn_checkpoint(nMinutes ? gArgs.GetArg("-dblogsize", DEFAULT_WALLET_DBLOGSIZE) * 1024 : 0, nMinutes, 0);
+    if (env) {
+        env->dbenv->txn_checkpoint(nMinutes ? gArgs.GetArg("-dblogsize", DEFAULT_WALLET_DBLOGSIZE) * 1024 : 0, nMinutes, 0);
+    }
 }
 
 void BerkeleyDatabase::IncrementUpdateCounter()
