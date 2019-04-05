@@ -31,19 +31,10 @@ def byte_to_base58(b, version):
 
 # TODO: def base58_decode
 
-def keyhash_to_p2pkh(hash, main = False):
-    assert len(hash) == 20
-    version = 0 if main else 111
-    return byte_to_base58(hash, version)
-
 def scripthash_to_p2sh(hash, main = False):
     assert len(hash) == 20
     version = 5 if main else 196
     return byte_to_base58(hash, version)
-
-def key_to_p2pkh(key, main = False):
-    key = check_key(key)
-    return keyhash_to_p2pkh(hash160(key), main)
 
 def script_to_p2sh(script, main = False):
     script = check_script(script)
