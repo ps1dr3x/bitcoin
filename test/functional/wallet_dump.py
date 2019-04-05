@@ -134,14 +134,15 @@ class WalletDumpTest(BitcoinTestFramework):
         result = self.nodes[0].dumpwallet(wallet_unenc_dump)
         assert_equal(result['filename'], wallet_unenc_dump)
 
-        found_legacy_addr, found_p2sh_segwit_addr, found_bech32_addr, found_script_addr, found_addr_chg, found_addr_rsv, hd_master_addr_unenc, _ = \
+        found_legacy_addr, found_p2sh_segwit_addr, found_bech32_addr, found_script_addr, found_addr_chg, found_addr_rsv, hd_master_addr_unenc, found_descriptors = \
             read_dump(wallet_unenc_dump, addrs, [multisig_addr], None)
         assert_equal(found_legacy_addr, test_addr_count)  # all keys must be in the dump
         assert_equal(found_p2sh_segwit_addr, test_addr_count)  # all keys must be in the dump
         assert_equal(found_bech32_addr, test_addr_count)  # all keys must be in the dump
         assert_equal(found_script_addr, 1)  # all scripts must be in the dump
-        assert_equal(found_addr_chg, 0)  # 0 blocks where mined
-        assert_equal(found_addr_rsv, 90 * 2)  # 90 keys plus 100% internal keys
+        assert_equal(found_addr_chg, 90 * 6)
+        assert_equal(found_addr_rsv, 0) # Descriptor wallets have no reserve keys
+        assert_equal(found_descriptors, 7) # 6 descriptors by default + 1 for addmultisig
 
         # encrypt wallet, restart, unlock and dump
         self.nodes[0].encryptwallet('test')
@@ -156,8 +157,8 @@ class WalletDumpTest(BitcoinTestFramework):
         assert_equal(found_p2sh_segwit_addr, test_addr_count)  # all keys must be in the dump
         assert_equal(found_bech32_addr, test_addr_count)  # all keys must be in the dump
         assert_equal(found_script_addr, 1)
-        assert_equal(found_addr_chg, 90 * 2)  # old reserve keys are marked as change now
-        assert_equal(found_addr_rsv, 90 * 2)
+        assert_equal(found_addr_chg, 90 * 6 * 2)  # old reserve keys are marked as change now, plus new change keys
+        assert_equal(found_addr_rsv, 0) # Descriptor wallets have no reserve keys
 
         # Overwriting should fail
         assert_raises_rpc_error(-8, "already exists", lambda: self.nodes[0].dumpwallet(wallet_enc_dump))

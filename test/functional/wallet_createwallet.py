@@ -67,7 +67,7 @@ class CreateWalletTest(BitcoinTestFramework):
         assert_raises_rpc_error(-4, "Error: This wallet has no available keys", w3.getnewaddress)
         # Set the seed
         w3.sethdseed()
-        assert_equal(w3.getwalletinfo()['keypoolsize'], 1)
+        assert_equal(w3.getwalletinfo()['keypoolsize'], 3)
         w3.getnewaddress()
         w3.getrawchangeaddress()
 

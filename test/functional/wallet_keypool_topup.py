@@ -80,7 +80,13 @@ class KeypoolRestoreTest(BitcoinTestFramework):
             assert_equal(self.nodes[idx].getbalance(), 15)
             assert_equal(self.nodes[idx].listtransactions()[0]['category'], "receive")
             # Check that we have marked all keys up to the used keypool key as used
-            assert_equal(self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress())['hdkeypath'], "m/0'/0'/110'")
+            addr_info = self.nodes[idx].getaddressinfo(self.nodes[idx].getnewaddress(address_type=output_type))
+            if output_type == "legacy":
+                assert_equal(addr_info['hdkeypath'], "m/44'/0'/110'")
+            elif output_type == "p2sh-segwit":
+                assert_equal(addr_info['hdkeypath'], "m/49'/0'/110'")
+            elif output_type == "bech32":
+                assert_equal(addr_info['hdkeypath'], "m/84'/0'/110'")
 
 
 if __name__ == '__main__':

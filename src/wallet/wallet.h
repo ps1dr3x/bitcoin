@@ -749,6 +749,7 @@ private:
     std::map<CKeyID, int64_t> m_pool_key_to_index;
     std::atomic<uint64_t> m_wallet_flags{0};
     std::map<DescriptorID, WalletDescriptor> m_map_descriptors GUARDED_BY(cs_wallet);
+    std::map<CScriptID, std::pair<DescriptorID, int>> m_map_scriptPubKeys GUARDED_BY(cs_wallet);
 
     int64_t nTimeFirstKey GUARDED_BY(cs_wallet) = 0;
 
@@ -776,6 +777,8 @@ private:
     void AddKeypoolPubkeyWithDB(const CPubKey& pubkey, const bool internal, WalletBatch& batch);
 
     bool SetAddressBookWithDB(WalletBatch& batch, const CTxDestination& address, const std::string& strName, const std::string& strPurpose);
+
+    bool AddScriptPubKey(const CScript& script) override EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /** Interface for accessing chain state. */
     interfaces::Chain& m_chain;
@@ -962,6 +965,9 @@ public:
     //! Get all of the descriptors from the set
     std::set<std::tuple<std::shared_ptr<Descriptor>, int32_t, int32_t, uint64_t>> GetDescriptors() const;
 
+    //! Add a script pubkey to the wallet and the descriptor and position it came from
+    bool AddScriptPubKey(const CScript& script, const DescriptorID& id, int pos) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+
     //! Holds a timestamp at which point the wallet is scheduled (externally) to be relocked. Caller must arrange for actual relocking to occur via Lock().
     int64_t nRelockTime = 0;
 
@@ -1083,6 +1089,10 @@ public:
     void ReturnKey(int64_t nIndex, bool fInternal, const CPubKey& pubkey);
     bool GetKeyFromPool(CPubKey &key, bool internal = false);
     int64_t GetOldestKeyPoolTime();
+
+    /** Fetch an address from the specified descriptor and address type */
+    bool GetDestinationFromDescriptor(CTxDestination& dest, OutputType type, bool internal);
+
     /**
      * Marks all keys in the keypool up to and including reserve_key as used.
      */
@@ -1125,11 +1135,7 @@ public:
 
     const std::string& GetLabelName(const CScript& scriptPubKey) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
-    unsigned int GetKeyPoolSize() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet)
-    {
-        AssertLockHeld(cs_wallet);
-        return setInternalKeyPool.size() + setExternalKeyPool.size();
-    }
+    unsigned int GetKeyPoolSize() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! signify that a particular wallet feature is now used. this may change nWalletVersion and nWalletMaxVersion if those are lower
     void SetMinVersion(enum WalletFeature, WalletBatch* batch_in = nullptr, bool fExplicit = false);
@@ -1230,6 +1236,9 @@ public:
 
     /* Returns true if the wallet can give out new addresses. This means it has keys in the keypool or can generate new keys */
     bool CanGetAddresses(bool internal = false);
+
+    /* Generate a new HD seed and a corresponding descriptor of the specified output type */
+    void GenerateNewDescriptor(CKeyID seed, OutputType type) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /* Generates a new HD seed (will not be activated) */
     CPubKey GenerateNewSeed();

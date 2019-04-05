@@ -29,7 +29,6 @@ class KeyPoolTest(BitcoinTestFramework):
         addr = nodes[0].getnewaddress()
         addr_data = nodes[0].getaddressinfo(addr)
         wallet_info = nodes[0].getwalletinfo()
-        print(addr_data)
         assert addr_before_encrypting_data['hdmasterfingerprint'] != wallet_info['hdfingerprint']
         assert addr_data['hdmasterfingerprint'] == wallet_info['hdfingerprint']
         assert_raises_rpc_error(-12, "Error: Keypool ran out, please call keypoolrefill first", nodes[0].getnewaddress)
@@ -39,8 +38,8 @@ class KeyPoolTest(BitcoinTestFramework):
         nodes[0].keypoolrefill(6)
         nodes[0].walletlock()
         wi = nodes[0].getwalletinfo()
-        assert_equal(wi['keypoolsize_hd_internal'], 6)
-        assert_equal(wi['keypoolsize'], 6)
+        assert_equal(wi['keypoolsize_hd_internal'], 18)
+        assert_equal(wi['keypoolsize'], 18)
 
         # drain the internal keys
         nodes[0].getrawchangeaddress()
@@ -80,8 +79,8 @@ class KeyPoolTest(BitcoinTestFramework):
         nodes[0].walletpassphrase('test', 100)
         nodes[0].keypoolrefill(100)
         wi = nodes[0].getwalletinfo()
-        assert_equal(wi['keypoolsize_hd_internal'], 100)
-        assert_equal(wi['keypoolsize'], 100)
+        assert_equal(wi['keypoolsize_hd_internal'], 300)
+        assert_equal(wi['keypoolsize'], 300)
 
 if __name__ == '__main__':
     KeyPoolTest().main()

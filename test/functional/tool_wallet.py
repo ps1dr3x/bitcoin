@@ -54,7 +54,7 @@ class ToolWalletTest(BitcoinTestFramework):
             ===========
             Encrypted: no
             HD (hd seed available): yes
-            Keypool Size: 2
+            Keypool Size: 6
             Transactions: 0
             Address Book: 3
         ''')
@@ -70,7 +70,7 @@ class ToolWalletTest(BitcoinTestFramework):
             ===========
             Encrypted: no
             HD (hd seed available): yes
-            Keypool Size: 2
+            Keypool Size: 6
             Transactions: 1
             Address Book: 3
         ''')

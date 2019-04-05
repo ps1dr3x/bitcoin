@@ -644,19 +644,18 @@ class RawTransactionsTest(BitcoinTestFramework):
         # test a fundrawtransaction using only watchonly #
         ##################################################
 
-        # Disable this test temporarily as there's no way for node3_watchonly_rpc to get a change address
-        # inputs = []
-        # outputs = {self.nodes[2].getnewaddress() : watchonly_amount / 2}
-        # rawtx = node3_watchonly_rpc.createrawtransaction(inputs, outputs)
-        #
-        # # Backward compatibility test (2nd param is includeWatching)
-        # result = node3_watchonly_rpc.fundrawtransaction(rawtx, True)
-        # res_dec = node3_watchonly_rpc.decoderawtransaction(result["hex"])
-        # assert_equal(len(res_dec["vin"]), 1)
-        # assert_equal(res_dec["vin"][0]["txid"], watchonly_txid)
-        #
-        # assert "fee" in result.keys()
-        # assert_greater_than(result["changepos"], -1)
+        inputs = []
+        outputs = {self.nodes[2].getnewaddress() : watchonly_amount / 2}
+        rawtx = node3_watchonly_rpc.createrawtransaction(inputs, outputs)
+
+        # Backward compatibility test (2nd param is includeWatching)
+        result = node3_watchonly_rpc.fundrawtransaction(rawtx, True)
+        res_dec = node3_watchonly_rpc.decoderawtransaction(result["hex"])
+        assert_equal(len(res_dec["vin"]), 1)
+        assert_equal(res_dec["vin"][0]["txid"], watchonly_txid)
+
+        assert "fee" in result.keys()
+        assert_greater_than(result["changepos"], -1)
 
         ###############################################################
         # test fundrawtransaction using the entirety of watched funds #
