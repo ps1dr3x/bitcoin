@@ -17,6 +17,7 @@ from test_framework.wallet_util import test_address
 class ImportWithLabel(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
+        self.extra_args = [['-deprecatedrpc=descriptordumpprivkey'], []]
         self.setup_clean_chain = True
 
     def skip_test_if_missing_module(self):
@@ -34,8 +35,6 @@ class ImportWithLabel(BitcoinTestFramework):
         self.nodes[1].importaddress(address, label)
         test_address(self.nodes[1],
                      address,
-                     iswatchonly=True,
-                     ismine=False,
                      label=label)
 
         self.log.info(
@@ -57,8 +56,6 @@ class ImportWithLabel(BitcoinTestFramework):
         self.nodes[1].importaddress(address2)
         test_address(self.nodes[1],
                      address2,
-                     iswatchonly=True,
-                     ismine=False,
                      label="")
 
         self.log.info(
@@ -80,8 +77,6 @@ class ImportWithLabel(BitcoinTestFramework):
         self.nodes[1].importaddress(address3, label3_addr)
         test_address(self.nodes[1],
                      address3,
-                     iswatchonly=True,
-                     ismine=False,
                      label=label3_addr)
 
         self.log.info(
@@ -106,8 +101,6 @@ class ImportWithLabel(BitcoinTestFramework):
         self.nodes[1].importaddress(address4, label4_addr)
         test_address(self.nodes[1],
                      address4,
-                     iswatchonly=True,
-                     ismine=False,
                      label=label4_addr,
                      embedded=None)
 

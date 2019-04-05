@@ -11,6 +11,7 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 3
+        self.extra_args = [[], ['-deprecatedrpc=descriptordumpprivkey'], []]
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
@@ -64,7 +65,7 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
             assert madd[0:4] == "bcrt"  # actually a bech32 address
 
         # compare against addmultisigaddress
-        msigw = node1.addmultisigaddress(self.nsigs, self.pub, None, self.output_type)
+        msigw = node1.addmultisigaddress(self.nsigs, self.pub, '', self.output_type)
         maddw = msigw["address"]
         mredeemw = msigw["redeemScript"]
         # addmultisigiaddress and createmultisig work the same

@@ -22,6 +22,7 @@ import shlex
 import sys
 
 from .authproxy import JSONRPCException
+from .descriptors import descsum_create
 from .util import (
     append_config,
     delete_cookie_file,
@@ -564,3 +565,52 @@ class TestNodeCLI():
             return json.loads(cli_stdout, parse_float=decimal.Decimal)
         except json.JSONDecodeError:
             return cli_stdout.rstrip("\n")
+
+    def addmultisigaddress(self, n_sigs, pubkeys, label=None, address_type=None):
+        if address_type is not None:
+            multisig = self.createmultisig(n_sigs, pubkeys, address_type)
+        else:
+            multisig = self.createmultisig(n_sigs, pubkeys)
+        import_data = {
+            'desc': multisig['descriptor'],
+            'timestamp': 'now'
+        }
+        if label is not None:
+            import_data['label'] = label
+        result = self.importdescriptors([import_data])
+        if not result[0]['success']:
+            raise JSONRPCException(result[0]['error'])
+        return multisig
+
+    def importaddress(self, address, label=None, rescan=True):
+        import_data = {
+            'desc': descsum_create('addr(' + address + ')'),
+            'timestamp': 1
+        }
+        if label is not None:
+            import_data['label'] = label
+        result = self.importdescriptors([import_data], {'rescan': rescan})
+        if not result[0]['success']:
+            raise JSONRPCException(result[0]['error'])
+
+    def importprivkey(self, privkey, label=None, rescan=True):
+        import_data = {
+            'desc': descsum_create('combo(' + privkey + ')'),
+            'timestamp': 1
+        }
+        if label is not None:
+            import_data['label'] = label
+        result = self.importdescriptors([import_data], {'rescan': rescan})
+        if not result[0]['success']:
+            raise JSONRPCException(result[0]['error'])
+
+    def importpubkey(self, pubkey, label=None, rescan=True):
+        import_data = {
+            'desc': descsum_create('combo(' + pubkey + ')'),
+            'timestamp': 1
+        }
+        if label is not None:
+            import_data['label'] = label
+        result = self.importdescriptors([import_data], {'rescan': rescan})
+        if not result[0]['success']:
+            raise JSONRPCException(result[0]['error'])

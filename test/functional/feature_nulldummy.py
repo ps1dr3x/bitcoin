@@ -48,9 +48,10 @@ class NULLDUMMYTest(BitcoinTestFramework):
 
     def run_test(self):
         self.address = self.nodes[0].getnewaddress()
-        self.ms_address = self.nodes[0].addmultisigaddress(1, [self.address])['address']
+        addr_pubkey = self.nodes[0].getaddressinfo(self.address)['pubkey']
+        self.ms_address = self.nodes[0].addmultisigaddress(1, [addr_pubkey])['address']
         self.wit_address = self.nodes[0].getnewaddress(address_type='p2sh-segwit')
-        self.wit_ms_address = self.nodes[0].addmultisigaddress(1, [self.address], '', 'p2sh-segwit')['address']
+        self.wit_ms_address = self.nodes[0].addmultisigaddress(1, [addr_pubkey], '', 'p2sh-segwit')['address']
 
         self.coinbase_blocks = self.nodes[0].generate(2)  # Block 2
         coinbase_txid = []

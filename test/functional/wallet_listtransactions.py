@@ -93,11 +93,10 @@ class ListTransactionsTest(BitcoinTestFramework):
 
         pubkey = self.nodes[1].getaddressinfo(self.nodes[1].getnewaddress())['pubkey']
         multisig = self.nodes[1].createmultisig(1, [pubkey])
-        self.nodes[0].importaddress(multisig["redeemScript"], "watchonly", False, True)
+        self.nodes[0].importaddress(multisig["address"], "watchonly", False)
         txid = self.nodes[1].sendtoaddress(multisig["address"], 0.1)
         self.nodes[1].generate(1)
         self.sync_all()
-        assert len(self.nodes[0].listtransactions(label="watchonly", count=100, include_watchonly=False)) == 0
         assert_array_result(self.nodes[0].listtransactions(label="watchonly", count=100, include_watchonly=True),
                             {"category": "receive", "amount": Decimal("0.1")},
                             {"txid": txid, "label": "watchonly"})

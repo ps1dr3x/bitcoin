@@ -5,6 +5,7 @@
 """Test createwallet arguments.
 """
 
+from test_framework.descriptors import descsum_create
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
@@ -15,6 +16,7 @@ class CreateWalletTest(BitcoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = False
         self.num_nodes = 1
+        self.extra_args = [['-deprecatedrpc=descriptordumpprivkey']]
         self.supports_cli = True
 
     def skip_test_if_missing_module(self):
@@ -39,7 +41,7 @@ class CreateWalletTest(BitcoinTestFramework):
         addr = w0.getnewaddress('', 'legacy')
         privkey = w0.dumpprivkey(addr)
         assert_raises_rpc_error(-4, 'Cannot import private keys to a wallet with private keys disabled', w1.importprivkey, privkey)
-        result = w1.importmulti([{'scriptPubKey': {'address': addr}, 'timestamp': 'now', 'keys': [privkey]}])
+        result = w1.importdescriptors([{'desc': descsum_create('combo(' + privkey + ')'), 'timestamp': 'now', 'keys': [privkey]}])
         assert not result[0]['success']
         assert 'warning' not in result[0]
         assert_equal(result[0]['error']['code'], -4)

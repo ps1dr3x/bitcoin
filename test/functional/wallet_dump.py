@@ -123,7 +123,7 @@ class WalletDumpTest(BitcoinTestFramework):
                 addrs.append(vaddr)
 
         # Test scripts dump by adding a 1-of-1 multisig address
-        multisig_addr = self.nodes[0].addmultisigaddress(1, [addrs[1]["address"]])["address"]
+        multisig_addr = self.nodes[0].addmultisigaddress(1, [addrs[1]["pubkey"]])["address"]
 
         # Refill the keypool. getnewaddress() refills the keypool *before* taking a key from
         # the keypool, so the final call to getnewaddress leaves the keypool with one key below

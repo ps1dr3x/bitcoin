@@ -19,8 +19,9 @@ importing nodes pick up the new transactions regardless of whether rescans
 happened previously.
 """
 
+from test_framework.descriptors import descsum_create
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import (assert_raises_rpc_error, connect_nodes, sync_blocks, assert_equal, set_node_times)
+from test_framework.util import (connect_nodes, sync_blocks, assert_equal, set_node_times)
 
 import collections
 import enum
@@ -34,36 +35,34 @@ Rescan = enum.Enum("Rescan", "no yes late_timestamp")
 class Variant(collections.namedtuple("Variant", "call data rescan prune")):
     """Helper for importing one key and verifying scanned transactions."""
 
-    def try_rpc(self, func, *args, **kwargs):
-        if self.expect_disabled:
-            assert_raises_rpc_error(-4, "Rescan is disabled in pruned mode", func, *args, **kwargs)
-        else:
-            return func(*args, **kwargs)
-
     def do_import(self, timestamp):
         """Call one key import RPC."""
         rescan = self.rescan == Rescan.yes
 
         if self.call == Call.single:
             if self.data == Data.address:
-                response = self.try_rpc(self.node.importaddress, address=self.address["address"], label=self.label, rescan=rescan)
+                response = self.node.importaddress(address=self.address["address"], label=self.label, rescan=rescan)
             elif self.data == Data.pub:
-                response = self.try_rpc(self.node.importpubkey, pubkey=self.address["pubkey"], label=self.label, rescan=rescan)
+                response = self.node.importpubkey(pubkey=self.address["pubkey"], label=self.label, rescan=rescan)
             elif self.data == Data.priv:
-                response = self.try_rpc(self.node.importprivkey, privkey=self.key, label=self.label, rescan=rescan)
+                response = self.node.importprivkey(privkey=self.key, label=self.label, rescan=rescan)
             assert_equal(response, None)
 
         elif self.call in (Call.multiaddress, Call.multiscript):
-            response = self.node.importmulti([{
-                "scriptPubKey": {
-                    "address": self.address["address"]
-                } if self.call == Call.multiaddress else self.address["scriptPubKey"],
+            if self.data == Data.priv:
+                desc = descsum_create('combo(' + self.key + ')')
+            elif self.data == Data.pub:
+                desc = descsum_create('combo(' + self.address["pubkey"] + ')')
+            elif self.call == Call.multiaddress:
+                desc = descsum_create('addr(' + self.address['address'] + ')')
+            else:
+                desc = descsum_create('raw(' + self.address['scriptPubKey'] + ')')
+
+            response = self.node.importdescriptors([{
+                "desc": desc,
                 "timestamp": timestamp + TIMESTAMP_WINDOW + (1 if self.rescan == Rescan.late_timestamp else 0),
-                "pubkeys": [self.address["pubkey"]] if self.data == Data.pub else [],
-                "keys": [self.key] if self.data == Data.priv else [],
                 "label": self.label,
-                "watchonly": self.data != Data.priv
-            }], {"rescan": self.rescan in (Rescan.yes, Rescan.late_timestamp)})
+            }],{"rescan": self.rescan in (Rescan.yes, Rescan.late_timestamp)})
             assert_equal(response, [{"success": True}])
 
     def check(self, txid=None, amount=None, confirmations=None):
@@ -91,16 +90,6 @@ class Variant(collections.namedtuple("Variant", "call data rescan prune")):
             assert_equal(address["address"], self.address["address"])
             assert_equal(address["amount"], self.expected_balance)
             assert_equal(address["confirmations"], confirmations)
-            # Verify the transaction is correctly marked watchonly depending on
-            # whether the transaction pays to an imported public key or
-            # imported private key. The test setup ensures that transaction
-            # inputs will not be from watchonly keys (important because
-            # involvesWatchonly will be true if either the transaction output
-            # or inputs are watchonly).
-            if self.data != Data.priv:
-                assert_equal(address["involvesWatchonly"], True)
-            else:
-                assert_equal("involvesWatchonly" not in address, True)
 
 
 # List of Variants for each way a key or address could be imported.
@@ -127,7 +116,7 @@ class ImportRescanTest(BitcoinTestFramework):
         self.skip_if_no_wallet()
 
     def setup_network(self):
-        extra_args = [["-addresstype=legacy"] for _ in range(self.num_nodes)]
+        extra_args = [["-addresstype=legacy", "-deprecatedrpc=descriptordumpprivkey"] for _ in range(self.num_nodes)]
         for i, import_node in enumerate(IMPORT_NODES, 2):
             if import_node.prune:
                 extra_args[i] += ["-prune=1"]
@@ -142,15 +131,17 @@ class ImportRescanTest(BitcoinTestFramework):
 
         self.start_nodes()
         for i in range(1, self.num_nodes):
+            self.nodes[i].createwallet("watchonly", True)
             connect_nodes(self.nodes[i], 0)
 
     def run_test(self):
         # Create one transaction on node 0 with a unique amount for
         # each possible type of wallet import RPC.
         for i, variant in enumerate(IMPORT_VARIANTS):
+            wrpc = self.nodes[1].get_wallet_rpc("")
             variant.label = "label {} {}".format(i, variant)
-            variant.address = self.nodes[1].getaddressinfo(self.nodes[1].getnewaddress(variant.label))
-            variant.key = self.nodes[1].dumpprivkey(variant.address["address"])
+            variant.address = wrpc.getaddressinfo(wrpc.getnewaddress(variant.label))
+            variant.key = wrpc.dumpprivkey(variant.address["address"])
             variant.initial_amount = 1 - (i + 1) / 64
             variant.initial_txid = self.nodes[0].sendtoaddress(variant.address["address"], variant.initial_amount)
 
@@ -166,9 +157,11 @@ class ImportRescanTest(BitcoinTestFramework):
         # For each variation of wallet key import, invoke the import RPC and
         # check the results from getbalance and listtransactions.
         for variant in IMPORT_VARIANTS:
-            variant.expect_disabled = variant.rescan == Rescan.yes and variant.prune and variant.call == Call.single
-            expect_rescan = variant.rescan == Rescan.yes and not variant.expect_disabled
-            variant.node = self.nodes[2 + IMPORT_NODES.index(ImportNode(variant.prune, expect_rescan))]
+            expect_rescan = variant.rescan == Rescan.yes
+            if variant.data != Data.priv:
+                variant.node = self.nodes[2 + IMPORT_NODES.index(ImportNode(variant.prune, expect_rescan))].get_wallet_rpc("watchonly")
+            else:
+                variant.node = self.nodes[2 + IMPORT_NODES.index(ImportNode(variant.prune, expect_rescan))].get_wallet_rpc("")
             variant.do_import(timestamp)
             if expect_rescan:
                 variant.expected_balance = variant.initial_amount
@@ -191,12 +184,9 @@ class ImportRescanTest(BitcoinTestFramework):
 
         # Check the latest results from getbalance and listtransactions.
         for variant in IMPORT_VARIANTS:
-            if not variant.expect_disabled:
-                variant.expected_balance += variant.sent_amount
-                variant.expected_txs += 1
-                variant.check(variant.sent_txid, variant.sent_amount, 1)
-            else:
-                variant.check()
+            variant.expected_balance += variant.sent_amount
+            variant.expected_txs += 1
+            variant.check(variant.sent_txid, variant.sent_amount, 1)
 
 if __name__ == "__main__":
     ImportRescanTest().main()

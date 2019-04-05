@@ -115,11 +115,14 @@ class WalletLabelsTest(BitcoinTestFramework):
         # Check that addmultisigaddress can assign labels.
         for label in labels:
             addresses = []
+            pubkeys = []
             for x in range(10):
-                addresses.append(node.getnewaddress())
-            multisig_address = node.addmultisigaddress(5, addresses, label.name)['address']
+                addr = node.getnewaddress()
+                addresses.append(addr)
+                pubkeys.append(node.getaddressinfo(addr)['pubkey'])
+            multisig_address = node.addmultisigaddress(5, pubkeys, label.name)['address']
             label.add_address(multisig_address)
-            label.purpose[multisig_address] = "send"
+            label.purpose[multisig_address] = "receive"
             label.verify(node)
         node.generate(101)
 

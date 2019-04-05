@@ -15,6 +15,7 @@ class ImportPrunedFundsTest(BitcoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
+        self.extra_args = [['-deprecatedrpc=descriptordumpprivkey'], []]
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
@@ -89,18 +90,7 @@ class ImportPrunedFundsTest(BitcoinTestFramework):
         self.nodes[1].importprunedfunds(rawtxn3, proof3)
         assert [tx for tx in self.nodes[1].listtransactions() if tx['txid'] == txnid3]
         balance3 = self.nodes[1].getbalance()
-        assert_equal(balance3, Decimal('0.025'))
-
-        # Addresses Test - after import
-        address_info = self.nodes[1].getaddressinfo(address1)
-        assert_equal(address_info['iswatchonly'], False)
-        assert_equal(address_info['ismine'], False)
-        address_info = self.nodes[1].getaddressinfo(address2)
-        assert_equal(address_info['iswatchonly'], True)
-        assert_equal(address_info['ismine'], False)
-        address_info = self.nodes[1].getaddressinfo(address3)
-        assert_equal(address_info['iswatchonly'], False)
-        assert_equal(address_info['ismine'], True)
+        assert_equal(balance3, Decimal('0.075'))
 
         # Remove transactions
         assert_raises_rpc_error(-8, "Transaction does not exist in wallet.", self.nodes[1].removeprunedfunds, txnid1)

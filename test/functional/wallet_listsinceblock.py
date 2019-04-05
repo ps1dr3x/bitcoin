@@ -10,6 +10,7 @@ from test_framework.util import assert_equal, assert_array_result, assert_raises
 class ListSinceBlockTest (BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 4
+        self.extra_args = [[], [], ['-deprecatedrpc=descriptordumpprivkey'], []]
         self.setup_clean_chain = True
 
     def skip_test_if_missing_module(self):

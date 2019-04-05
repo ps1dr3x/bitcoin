@@ -19,7 +19,7 @@ class WalletHDTest(BitcoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
-        self.extra_args = [[], ['-keypool=0']]
+        self.extra_args = [['-deprecatedrpc=descriptordumpprivkey'], ['-keypool=0', '-deprecatedrpc=descriptordumpprivkey']]
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()

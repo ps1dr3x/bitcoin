@@ -21,6 +21,7 @@ from test_framework.util import (
 class WalletTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 4
+        self.extra_args = [['-deprecatedrpc=descriptordumpprivkey'], [], ['-deprecatedrpc=descriptordumpprivkey'], []]
         self.setup_clean_chain = True
 
     def skip_test_if_missing_module(self):
@@ -312,13 +313,10 @@ class WalletTest(BitcoinTestFramework):
         assert_raises_rpc_error(-1, "not an integer", self.nodes[0].generate, "2")
 
         # This will raise an exception for the invalid private key format
-        assert_raises_rpc_error(-5, "Invalid private key encoding", self.nodes[0].importprivkey, "invalid")
-
-        # This will raise an exception for importing an address with the PS2H flag
-        temp_address = self.nodes[1].getnewaddress()
-        assert_raises_rpc_error(-5, "Cannot use the p2sh flag with an address - use a script instead", self.nodes[0].importaddress, temp_address, "label", False, True)
+        assert_raises_rpc_error(-5, "Descriptor is invalid", self.nodes[0].importprivkey, "invalid")
 
         # This will raise an exception for attempting to dump the private key of an address you do not own
+        temp_address = self.nodes[1].getnewaddress()
         assert_raises_rpc_error(-3, "Address does not refer to a key", self.nodes[0].dumpprivkey, temp_address)
 
         # This will raise an exception for attempting to get the private key of an invalid Bitcoin address
@@ -328,13 +326,13 @@ class WalletTest(BitcoinTestFramework):
         assert_raises_rpc_error(-5, "Invalid Bitcoin address", self.nodes[0].setlabel, "invalid address", "label")
 
         # This will raise an exception for importing an invalid address
-        assert_raises_rpc_error(-5, "Invalid Bitcoin address or script", self.nodes[0].importaddress, "invalid")
+        assert_raises_rpc_error(-5, "Descriptor is invalid", self.nodes[0].importaddress, "invalid")
 
         # This will raise an exception for attempting to import a pubkey that isn't in hex
-        assert_raises_rpc_error(-5, "Pubkey must be a hex string", self.nodes[0].importpubkey, "not hex")
+        assert_raises_rpc_error(-5, "Descriptor is invalid", self.nodes[0].importpubkey, "not hex")
 
         # This will raise an exception for importing an invalid pubkey
-        assert_raises_rpc_error(-5, "Pubkey is not a valid public key", self.nodes[0].importpubkey, "5361746f736869204e616b616d6f746f")
+        assert_raises_rpc_error(-5, "Descriptor is invalid", self.nodes[0].importpubkey, "5361746f736869204e616b616d6f746f")
 
         # Import address and private key to check correct behavior of spendable unspents
         # 1. Send some coins to generate new UTXO
@@ -345,14 +343,6 @@ class WalletTest(BitcoinTestFramework):
 
         # 2. Import address from node2 to node1
         self.nodes[1].importaddress(address_to_import)
-
-        # 3. Validate that the imported address is watch-only on node1
-        assert self.nodes[1].getaddressinfo(address_to_import)["iswatchonly"]
-
-        # 4. Check that the unspents after import are not spendable
-        assert_array_result(self.nodes[1].listunspent(),
-                            {"address": address_to_import},
-                            {"spendable": False})
 
         # 5. Import private key of the previously imported address on node1
         priv_key = self.nodes[2].dumpprivkey(address_to_import)

@@ -11,6 +11,7 @@ from test_framework.address import (
     script_to_p2wsh,
 )
 from test_framework.blocktools import witness_script, send_to_witness
+from test_framework.descriptors import descsum_create
 from test_framework.messages import COIN, COutPoint, CTransaction, CTxIn, CTxOut, FromHex, ToHex
 from test_framework.script import CScript, OP_1, OP_CHECKMULTISIG, OP_TRUE, OP_DROP
 from test_framework.test_framework import BitcoinTestFramework
@@ -105,11 +106,12 @@ class SegWitTest(BitcoinTestFramework):
         p2sh_ids = []  # p2sh_ids[NODE][VER] is an array of txids that spend to a witness version VER pkscript to an address for NODE embedded in p2sh
         wit_ids = []  # wit_ids[NODE][VER] is an array of txids that spend to a witness version VER pkscript to an address for NODE via bare witness
         for i in range(3):
-            newaddress = self.nodes[i].getnewaddress()
+            newaddress = self.nodes[i].getnewaddress('', 'p2sh-segwit')
             self.pubkey.append(self.nodes[i].getaddressinfo(newaddress)["pubkey"])
             multiscript = CScript([OP_1, hex_str_to_bytes(self.pubkey[-1]), OP_1, OP_CHECKMULTISIG])
             p2sh_ms_addr = self.nodes[i].addmultisigaddress(1, [self.pubkey[-1]], '', 'p2sh-segwit')['address']
             bip173_ms_addr = self.nodes[i].addmultisigaddress(1, [self.pubkey[-1]], '', 'bech32')['address']
+            assert(self.nodes[i].importdescriptors([{'desc': descsum_create('wpkh(' + self.pubkey[-1] + ')'), 'timestamp': 'now'}])[0]['success'])
             assert_equal(p2sh_ms_addr, script_to_p2sh_p2wsh(multiscript))
             assert_equal(bip173_ms_addr, script_to_p2wsh(multiscript))
             p2sh_ids.append([])
