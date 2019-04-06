@@ -1214,6 +1214,9 @@ public:
 
     /** Add a KeyOriginInfo to the wallet */
     bool AddKeyOrigin(const CPubKey& pubkey, const KeyOriginInfo& info);
+
+    /** Upgrade the wallet */
+    static bool UpgradeWallet(std::shared_ptr<CWallet> wallet, interfaces::Chain& chain, bool first_run);
 };
 
 /**
