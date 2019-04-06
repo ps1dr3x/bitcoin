@@ -1232,6 +1232,9 @@ public:
     /** Implement lookup of key origin information through wallet key metadata. */
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
 
+    /** Upgrade the wallet */
+    bool UpgradeWallet(int version, std::string& out_message);
+
     friend struct WalletTestingSetup;
 };
 

@@ -4125,67 +4125,6 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
         }
     }
 
-    int prev_version = walletInstance->GetVersion();
-    if (gArgs.GetBoolArg("-upgradewallet", fFirstRun))
-    {
-        int nMaxVersion = gArgs.GetArg("-upgradewallet", 0);
-        if (nMaxVersion == 0) // the -upgradewallet without argument case
-        {
-            walletInstance->WalletLogPrintf("Performing wallet upgrade to %i\n", FEATURE_LATEST);
-            nMaxVersion = FEATURE_LATEST;
-            walletInstance->SetMinVersion(FEATURE_LATEST); // permanently upgrade the wallet immediately
-        }
-        else
-            walletInstance->WalletLogPrintf("Allowing wallet upgrade up to %i\n", nMaxVersion);
-        if (nMaxVersion < walletInstance->GetVersion())
-        {
-            chain.initError(_("Cannot downgrade wallet"));
-            return nullptr;
-        }
-        walletInstance->SetMaxVersion(nMaxVersion);
-    }
-
-    // Upgrade to HD if explicit upgrade
-    if (gArgs.GetBoolArg("-upgradewallet", false)) {
-        LOCK(walletInstance->cs_wallet);
-
-        // Do not upgrade versions to any version between HD_SPLIT and FEATURE_PRE_SPLIT_KEYPOOL unless already supporting HD_SPLIT
-        int max_version = walletInstance->GetVersion();
-        if (!walletInstance->CanSupportFeature(FEATURE_HD_SPLIT) && max_version >= FEATURE_HD_SPLIT && max_version < FEATURE_PRE_SPLIT_KEYPOOL) {
-            chain.initError(_("Cannot upgrade a non HD split wallet without upgrading to support pre split keypool. Please use -upgradewallet=169900 or -upgradewallet with no version specified."));
-            return nullptr;
-        }
-
-        bool hd_upgrade = false;
-        bool split_upgrade = false;
-        if (walletInstance->CanSupportFeature(FEATURE_HD) && !walletInstance->IsHDEnabled()) {
-            walletInstance->WalletLogPrintf("Upgrading wallet to HD\n");
-            walletInstance->SetMinVersion(FEATURE_HD);
-
-            // generate a new master key
-            CPubKey masterPubKey = walletInstance->GenerateNewSeed();
-            walletInstance->SetHDSeed(masterPubKey);
-            hd_upgrade = true;
-        }
-        // Upgrade to HD chain split if necessary
-        if (walletInstance->CanSupportFeature(FEATURE_HD_SPLIT)) {
-            walletInstance->WalletLogPrintf("Upgrading wallet to use HD chain split\n");
-            walletInstance->SetMinVersion(FEATURE_PRE_SPLIT_KEYPOOL);
-            split_upgrade = FEATURE_HD_SPLIT > prev_version;
-        }
-        // Mark all keys currently in the keypool as pre-split
-        if (split_upgrade) {
-            walletInstance->MarkPreSplitKeys();
-        }
-        // Regenerate the keypool if upgraded to HD
-        if (hd_upgrade) {
-            if (!walletInstance->TopUpKeyPool()) {
-                chain.initError(_("Unable to generate keys"));
-                return nullptr;
-            }
-        }
-    }
-
     if (fFirstRun)
     {
         // ensure this wallet.dat can only be opened by clients supporting HD with chain split and expects no default key
@@ -4556,4 +4495,65 @@ bool CWallet::AddKeyOriginWithDB(WalletBatch& batch, const CPubKey& pubkey, cons
     mapKeyMetadata[pubkey.GetID()].has_key_origin = true;
     mapKeyMetadata[pubkey.GetID()].hdKeypath = WriteHDKeypath(info.path);
     return batch.WriteKeyMetadata(mapKeyMetadata[pubkey.GetID()], pubkey, true);
+}
+
+bool CWallet::UpgradeWallet(int version, std::string& out_message)
+{
+    LOCK(cs_wallet);
+    int prev_version = GetVersion();
+    int nMaxVersion = version;
+    if (nMaxVersion == 0) // the -upgradewallet without argument case
+    {
+        WalletLogPrintf("Performing wallet upgrade to %i\n", FEATURE_LATEST);
+        nMaxVersion = FEATURE_LATEST;
+        SetMinVersion(FEATURE_LATEST); // permanently upgrade the wallet immediately
+        out_message = "Wallet upgraded to latest version";
+    }
+    else
+        WalletLogPrintf("Allowing wallet upgrade up to %i\n", nMaxVersion);
+    if (nMaxVersion < GetVersion())
+    {
+        out_message = "Cannot downgrade wallet";
+        return false;
+    }
+    SetMaxVersion(nMaxVersion);
+
+    // Do not upgrade versions to any version between HD_SPLIT and FEATURE_PRE_SPLIT_KEYPOOL unless already supporting HD_SPLIT
+    int max_version = GetVersion();
+    if (!CanSupportFeature(FEATURE_HD_SPLIT) && max_version >= FEATURE_HD_SPLIT && max_version < FEATURE_PRE_SPLIT_KEYPOOL) {
+        out_message = "Cannot upgrade a non HD split wallet without upgrading to support pre split keypool. Please use upgradewallet with no version specified or specify version 169900";
+        return false;
+    }
+
+    bool hd_upgrade = false;
+    bool split_upgrade = false;
+    if (CanSupportFeature(FEATURE_HD) && !IsHDEnabled()) {
+        WalletLogPrintf("Upgrading wallet to HD\n");
+        SetMinVersion(FEATURE_HD);
+
+        // generate a new master key
+        CPubKey masterPubKey = GenerateNewSeed();
+        SetHDSeed(masterPubKey);
+        hd_upgrade = true;
+        out_message = "Wallet upgraded to HD";
+    }
+    // Upgrade to HD chain split if necessary
+    if (CanSupportFeature(FEATURE_HD_SPLIT)) {
+        WalletLogPrintf("Upgrading wallet to use HD chain split\n");
+        SetMinVersion(FEATURE_PRE_SPLIT_KEYPOOL);
+        split_upgrade = FEATURE_HD_SPLIT > prev_version;
+        out_message = "Wallet upgraded to HD chain split";
+    }
+    // Mark all keys currently in the keypool as pre-split
+    if (split_upgrade) {
+        MarkPreSplitKeys();
+    }
+    // Regenerate the keypool if upgraded to HD
+    if (hd_upgrade) {
+        if (!TopUpKeyPool()) {
+            out_message = "Unable to generate keys";
+            return false;
+        }
+    }
+    return true;
 }
