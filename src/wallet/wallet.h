@@ -962,6 +962,18 @@ public:
     //! Load a descriptor
     bool LoadDescriptor(const WalletDescriptor& desc);
 
+    //! Convert the given key id into a single key combo descriptor and add it to the wallet
+    bool AddDescriptorForKey(const CKeyID& id, const CKeyMetadata* meta);
+
+    //! Convert all watch only scripts to descriptors and return them
+    std::vector<WalletDescriptor> ConvertWatchOnlyToDescriptor();
+
+    //! Convert all scripts to descriptors and return them distinguished by watch only or spendable
+    void ConvertScriptsToDescriptor(std::vector<WalletDescriptor>& watchonly_out, std::vector<WalletDescriptor>& spendable_out);
+
+    //! Convert all of the keys to descriptors
+    void ConvertKeysToDescriptor();
+
     //! Get all of the descriptors from the set
     std::set<std::tuple<std::shared_ptr<Descriptor>, int32_t, int32_t, uint64_t>> GetDescriptors() const;
 

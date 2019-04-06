@@ -516,6 +516,190 @@ bool CWallet::LoadDescriptor(const WalletDescriptor& desc)
     return true;
 }
 
+bool CWallet::AddDescriptorForKey(const CKeyID& id, const CKeyMetadata* meta)
+{
+    // Get the private key for this id
+    CKey key;
+    if (!GetKey(id, key)) {
+        return false;
+    }
+
+    // Get the key origin info string if there is one
+    std::string origin_str = "";
+    if (meta && meta->has_key_origin) {
+        origin_str = "[" + HexStr(std::begin(meta->key_origin.fingerprint), std::end(meta->key_origin.fingerprint)) + FormatHDKeypath(meta->key_origin.path) + "]";
+    }
+
+    // make the descriptor
+    CPubKey pubkey = key.GetPubKey();
+    std::string desc_str = "combo(" + origin_str + HexStr(pubkey.begin(), pubkey.end()) + ")";
+    FlatSigningProvider keys;
+    std::unique_ptr<Descriptor> desc = Parse(desc_str, keys, false);
+    WalletDescriptor wallet_desc(std::move(desc), meta? meta->nCreateTime : 0, 0, 1, 0);
+
+    // Build the cache
+    std::vector<unsigned char> cache;
+    std::vector<CScript> scripts_temp;
+    assert(wallet_desc.descriptor->Expand(0, keys, scripts_temp, keys, &cache));
+    wallet_desc.cache.push_back(cache);
+
+    // Add the descriptor to the wallet
+    AddWalletDescriptor(wallet_desc);
+    return true;
+}
+
+std::vector<WalletDescriptor> CWallet::ConvertWatchOnlyToDescriptor()
+{
+    AssertLockHeld(cs_wallet);
+    LOCK(cs_KeyStore);
+
+    std::vector<WalletDescriptor> out;
+    for (const CScript& script : setWatchOnly) {
+        std::shared_ptr<Descriptor> desc = std::move(InferDescriptor(script, *this));
+        WalletDescriptor wallet_desc(desc, m_script_metadata[CScriptID(script)].nCreateTime, 0, 1, 0);
+
+        // Build the cache
+        std::vector<unsigned char> cache;
+        std::vector<CScript> scripts_temp;
+        FlatSigningProvider keys;
+        assert(wallet_desc.descriptor->Expand(0, keys, scripts_temp, keys, &cache));
+        wallet_desc.cache.push_back(cache);
+
+        out.push_back(wallet_desc);
+    }
+    return out;
+}
+
+void CWallet::ConvertScriptsToDescriptor(std::vector<WalletDescriptor>& watchonly_out, std::vector<WalletDescriptor>& spendable_out)
+{
+    AssertLockHeld(cs_wallet);
+    LOCK(cs_KeyStore);
+
+    // Must do this before loading descriptors because we use IsMine()
+    assert(!HaveScriptPubKeys());
+
+    for (const auto& script_pair : mapScripts) {
+        const CScript& script = script_pair.second;
+        std::shared_ptr<Descriptor> desc = std::move(InferDescriptor(script, *this));
+        WalletDescriptor wallet_desc(desc, m_script_metadata[CScriptID(script)].nCreateTime, 0, 1, 0);
+
+        // Build the cache
+        std::vector<unsigned char> cache;
+        std::vector<CScript> scripts_temp;
+        FlatSigningProvider keys;
+        assert(wallet_desc.descriptor->Expand(0, keys, scripts_temp, keys, &cache));
+        wallet_desc.cache.push_back(cache);
+
+        // Check if this is watchonly
+        bool watchonly = ::IsMine(*this, script) == ISMINE_WATCH_ONLY;
+        bool spendable = ::IsMine(*this, script) == ISMINE_SPENDABLE;
+
+        if (watchonly && IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+            watchonly_out.push_back(wallet_desc);
+        } else if (spendable && !IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+            spendable_out.push_back(wallet_desc);
+        }
+    }
+}
+
+void CWallet::ConvertKeysToDescriptor()
+{
+    AssertLockHeld(cs_wallet);
+    // Find all of the HD seeds
+    std::map<CKeyID, uint32_t> hd_seeds; // HD seed ids and highest index key
+    std::set<CKeyID> handled; // Keys that we've already dealt with
+    for (const auto& meta_pair : mapKeyMetadata) {
+        CKeyMetadata meta = meta_pair.second;
+        if (!meta.hd_seed_id.IsNull()) {
+            // Anything that has a non-null seed id is a generated key
+            if (hd_seeds.count(meta.hd_seed_id) == 0) {
+                // Add the seed
+                hd_seeds.emplace(meta.hd_seed_id, 0);
+            }
+            if (meta.has_key_origin) {
+                // Check the path matches what we expect for generated keys
+                assert(meta.key_origin.path.size() == 3);
+                assert(meta.key_origin.path[0] == BIP32_HARDENED_KEY_LIMIT);
+                assert(meta.key_origin.path[1] == BIP32_HARDENED_KEY_LIMIT || meta.key_origin.path[1] == BIP32_HARDENED_KEY_LIMIT + 1);
+                // Figure out what the highest index key was
+                uint32_t index = meta.key_origin.path[2] & ~BIP32_HARDENED_KEY_LIMIT;
+                hd_seeds[meta.hd_seed_id] = std::max(hd_seeds[meta.hd_seed_id], index);
+            }
+        } else {
+            // Any key without a hd seed id is imported or non-deterministic
+            AddDescriptorForKey(meta_pair.first, &meta);
+        }
+        handled.insert(meta_pair.first);
+    }
+
+    // Make the descriptors for hd seeds
+    for (const auto& seed_pair : hd_seeds) {
+        // Get the key for the seed
+        CKey seed_key;
+        assert(GetKey(seed_pair.first, seed_key));
+        int64_t creation_time = mapKeyMetadata[seed_pair.first].nCreateTime;
+
+        // Get the extended key
+        CExtKey master_key;
+        master_key.SetSeed(seed_key.begin(), seed_key.size());
+        std::string xpub = EncodeExtPubKey(master_key.Neuter());
+
+        // Construct descriptor string
+        std::string primary_desc_str = "combo(" + xpub + "/0'/0'/*')";
+        std::string change_desc_str = "combo(" + xpub + "/0'/1'/*')";
+
+        FlatSigningProvider keys;
+        std::unique_ptr<Descriptor> primary_descriptor = Parse(primary_desc_str, keys, false);
+        std::unique_ptr<Descriptor> change_descriptor = Parse(change_desc_str, keys, false);
+        WalletDescriptor primary(std::move(primary_descriptor), creation_time, 0, seed_pair.second + 1, 0);
+        WalletDescriptor change(std::move(change_descriptor), creation_time, 0, seed_pair.second + 1, 0);
+
+        // Calculate the private key for the extended key
+        CKeyMetadata metadata(creation_time);
+        CPubKey master_pubkey = master_key.key.GetPubKey();
+        assert(master_key.key.VerifyPubKey(master_pubkey));
+        metadata.hdKeypath     = "m";
+        metadata.has_key_origin = true;
+        std::copy(master_key.vchFingerprint, master_key.vchFingerprint + 4, metadata.key_origin.fingerprint);
+        metadata.key_origin.path = std::vector<uint32_t>();
+
+        // mem store the metadata
+        mapKeyMetadata[master_pubkey.GetID()] = metadata;
+        handled.insert(master_pubkey.GetID());
+
+        // write the key&metadata to the database
+        if (!HaveKey(master_pubkey.GetID()) && !AddKeyPubKey(master_key.key, master_pubkey))
+            throw std::runtime_error(std::string(__func__) + ": AddKeyPubKey failed");
+
+        // Build caches
+        for (int32_t i = primary.range_start; i < primary.range_end; ++i) {
+            FlatSigningProvider out_keys;
+            std::vector<CScript> scripts_temp;
+            std::vector<unsigned char> cache;
+            assert(primary.descriptor->Expand(i, *this, scripts_temp, out_keys, &cache));
+            primary.cache.push_back(std::move(cache));
+        }
+        for (int32_t i = change.range_start; i < change.range_end; ++i) {
+            FlatSigningProvider out_keys;
+            std::vector<CScript> scripts_temp;
+            std::vector<unsigned char> cache;
+            assert(change.descriptor->Expand(i, *this, scripts_temp, out_keys, &cache));
+            change.cache.push_back(std::move(cache));
+        }
+
+        // Add to the wallet
+        AddWalletDescriptor(primary);
+        AddWalletDescriptor(change);
+    }
+
+    // Make the descriptors for the remaining keys that don't have key metadata
+    for (const CKeyID& id : GetKeys()) {
+        if (handled.count(id) == 0) {
+            AddDescriptorForKey(id, nullptr);
+        }
+    }
+}
+
 std::set<std::tuple<std::shared_ptr<Descriptor>, int32_t, int32_t, uint64_t>> CWallet::GetDescriptors() const
 {
     AssertLockHeld(cs_wallet);
@@ -4931,7 +5115,7 @@ bool CWallet::UpgradeWallet(int version, std::string& out_message)
 
     bool hd_upgrade = false;
     bool split_upgrade = false;
-    if (CanSupportFeature(FEATURE_HD) && !IsHDEnabled()) {
+    if (CanSupportFeature(FEATURE_HD) && hdChain.seed_id.IsNull() && !IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
         WalletLogPrintf("Upgrading wallet to HD\n");
         SetMinVersion(FEATURE_HD);
 
@@ -4947,6 +5131,67 @@ bool CWallet::UpgradeWallet(int version, std::string& out_message)
         SetMinVersion(FEATURE_PRE_SPLIT_KEYPOOL);
         split_upgrade = FEATURE_HD_SPLIT > prev_version;
         out_message = "Wallet upgraded to HD chain split";
+    }
+    // Upgrade to descriptors if necessary
+    if (CanSupportFeature(FEATURE_DESCRIPTORS) && prev_version < FEATURE_DESCRIPTORS) {
+        // Don't do the HD upgrade stuff at the end
+        hd_upgrade = false;
+        split_upgrade = false;
+
+        // First convert all of the watch only things
+        std::vector<WalletDescriptor> watchonly_descs = ConvertWatchOnlyToDescriptor();
+
+        // Now convert all of the scripts
+        std::vector<WalletDescriptor> spendable_descs;
+        ConvertScriptsToDescriptor(watchonly_descs, spendable_descs);
+
+        // Abort if there's mixed watchonly
+        if (!watchonly_descs.empty()) {
+            if (!IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+                out_message = "Cannot upgrade a wallet containing watchonly in a wallet with private keys enabled.";
+                return false;
+            }
+            for (const WalletDescriptor& desc : watchonly_descs) {
+                AddWalletDescriptor(desc);
+            }
+            out_message = "Wallet has been upgraded to descriptor wallet. A new watch only wallet has been created with your watch only scripts";
+        }
+
+        // Convert all of the keys and add their descriptors to the wallet
+        ConvertKeysToDescriptor();
+
+        // For all of the spendable descriptors, insert the ones we don't already have
+        for (const WalletDescriptor& desc : spendable_descs) {
+            FlatSigningProvider out_keys;
+            std::vector<CScript> scripts;
+            desc.descriptor->ExpandFromCache(0, desc.cache[0], scripts, out_keys);
+            bool have_all_spks = true;
+            for (const CScript& script : scripts) {
+                if (!HaveScriptPubKey(script)) {
+                    have_all_spks = false;
+                }
+            }
+            if (!have_all_spks) {
+                AddWalletDescriptor(desc);
+            }
+        }
+
+        // Generate a new seed and set up main descriptors
+        if (!IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+            CPubKey seed = GenerateNewSeed();
+            SetHDSeed(seed);
+            // Generate the descriptors for each type
+            CKeyID seed_id = seed.GetID();
+            GenerateNewDescriptor(seed_id, OutputType::LEGACY);
+            GenerateNewDescriptor(seed_id, OutputType::P2SH_SEGWIT);
+            GenerateNewDescriptor(seed_id, OutputType::BECH32);
+            // Empty the old keypool and generate a new one with descriptors
+            if (!NewKeyPool()) {
+                out_message = "Unable to generate keys";
+                return false;
+            }
+            out_message = "Wallet has been upgraded to a descriptor wallet. A new HD seed and keypool have been generated. A new backup is required.";
+        }
     }
     // Mark all keys currently in the keypool as pre-split
     if (split_upgrade) {
