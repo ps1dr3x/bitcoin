@@ -4041,14 +4041,6 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
         }
     }
 
-    if (gArgs.GetBoolArg("-upgradewallet", false)) {
-        std::string out;
-        if (!walletInstance->UpgradeWallet(gArgs.GetBoolArg("-upgradewallet", 0), out)) {
-            chain.initError(out);
-            return nullptr;
-        }
-    }
-
     if (fFirstRun)
     {
         // ensure this wallet.dat can only be opened by clients supporting HD with chain split and expects no default key
