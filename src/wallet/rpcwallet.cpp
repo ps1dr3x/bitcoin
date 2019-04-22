@@ -2422,6 +2422,7 @@ static UniValue getwalletinfo(const JSONRPCRequest& request)
             "  \"paytxfee\": x.xxxx,                (numeric) the transaction fee configuration, set in " + CURRENCY_UNIT + "/kB\n"
             "  \"hdseedid\": \"<hash160>\"            (string, optional) the Hash160 of the HD seed (only present when HD is enabled)\n"
             "  \"private_keys_enabled\": true|false (boolean) false if privatekeys are disabled for this wallet (enforced watch-only wallet)\n"
+            "  \"descriptors\": true|false          (boolean) true if the wallet supports descriptors\n"
             "}\n"
                 },
                 RPCExamples{
@@ -2461,6 +2462,7 @@ static UniValue getwalletinfo(const JSONRPCRequest& request)
         obj.pushKV("hdseedid", seed_id.GetHex());
     }
     obj.pushKV("private_keys_enabled", !pwallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS));
+    obj.pushKV("descriptors", pwallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS));
     return obj;
 }
 
