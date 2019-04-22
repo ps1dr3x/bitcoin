@@ -4042,7 +4042,9 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
     }
 
     if (gArgs.GetBoolArg("-upgradewallet", false)) {
-        if (!UpgradeWallet(walletInstance, chain)) {
+        std::string out;
+        if (!UpgradeWallet(walletInstance, gArgs.GetBoolArg("-upgradewallet", 0), out)) {
+            chain.initError(out);
             return nullptr;
         }
     }
@@ -4260,10 +4262,10 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
     return walletInstance;
 }
 
-bool CWallet::UpgradeWallet(std::shared_ptr<CWallet> walletInstance, interfaces::Chain& chain)
+bool CWallet::UpgradeWallet(std::shared_ptr<CWallet> walletInstance, int version, std::string& out)
 {
     int prev_version = walletInstance->GetVersion();
-    int nMaxVersion = gArgs.GetArg("-upgradewallet", 0);
+    int nMaxVersion = version;
     if (nMaxVersion == 0) // the -upgradewallet without argument case
     {
         walletInstance->WalletLogPrintf("Performing wallet upgrade to %i\n", FEATURE_LATEST);
@@ -4274,7 +4276,7 @@ bool CWallet::UpgradeWallet(std::shared_ptr<CWallet> walletInstance, interfaces:
         walletInstance->WalletLogPrintf("Allowing wallet upgrade up to %i\n", nMaxVersion);
     if (nMaxVersion < walletInstance->GetVersion())
     {
-        chain.initError(_("Cannot downgrade wallet"));
+        out = _("Cannot downgrade wallet");
         return false;
     }
     walletInstance->SetMaxVersion(nMaxVersion);
@@ -4285,7 +4287,7 @@ bool CWallet::UpgradeWallet(std::shared_ptr<CWallet> walletInstance, interfaces:
     // Do not upgrade versions to any version between HD_SPLIT and FEATURE_PRE_SPLIT_KEYPOOL unless already supporting HD_SPLIT
     int max_version = walletInstance->GetVersion();
     if (!walletInstance->CanSupportFeature(FEATURE_HD_SPLIT) && max_version >= FEATURE_HD_SPLIT && max_version < FEATURE_PRE_SPLIT_KEYPOOL) {
-        chain.initError(_("Cannot upgrade a non HD split wallet without upgrading to support pre split keypool. Please use -upgradewallet=169900 or -upgradewallet with no version specified."));
+        out = _("Cannot upgrade a non HD split wallet without upgrading to support pre split keypool. Please use -upgradewallet=169900 or -upgradewallet with no version specified.");
         return false;
     }
 
@@ -4313,7 +4315,7 @@ bool CWallet::UpgradeWallet(std::shared_ptr<CWallet> walletInstance, interfaces:
     // Regenerate the keypool if upgraded to HD
     if (hd_upgrade) {
         if (!walletInstance->TopUpKeyPool()) {
-            chain.initError(_("Unable to generate keys"));
+            out = _("Unable to generate keys");
             return false;
         }
     }
