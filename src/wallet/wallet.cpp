@@ -4043,7 +4043,7 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
 
     if (gArgs.GetBoolArg("-upgradewallet", false)) {
         std::string out;
-        if (!UpgradeWallet(walletInstance, gArgs.GetBoolArg("-upgradewallet", 0), out)) {
+        if (!walletInstance->UpgradeWallet(gArgs.GetBoolArg("-upgradewallet", 0), out)) {
             chain.initError(out);
             return nullptr;
         }
@@ -4262,59 +4262,59 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
     return walletInstance;
 }
 
-bool CWallet::UpgradeWallet(std::shared_ptr<CWallet> walletInstance, int version, std::string& out)
+bool CWallet::UpgradeWallet(int version, std::string& out)
 {
-    int prev_version = walletInstance->GetVersion();
+    int prev_version = GetVersion();
     int nMaxVersion = version;
     if (nMaxVersion == 0) // the -upgradewallet without argument case
     {
-        walletInstance->WalletLogPrintf("Performing wallet upgrade to %i\n", FEATURE_LATEST);
+        WalletLogPrintf("Performing wallet upgrade to %i\n", FEATURE_LATEST);
         nMaxVersion = FEATURE_LATEST;
-        walletInstance->SetMinVersion(FEATURE_LATEST); // permanently upgrade the wallet immediately
+        SetMinVersion(FEATURE_LATEST); // permanently upgrade the wallet immediately
     }
     else
-        walletInstance->WalletLogPrintf("Allowing wallet upgrade up to %i\n", nMaxVersion);
-    if (nMaxVersion < walletInstance->GetVersion())
+        WalletLogPrintf("Allowing wallet upgrade up to %i\n", nMaxVersion);
+    if (nMaxVersion < GetVersion())
     {
         out = _("Cannot downgrade wallet");
         return false;
     }
-    walletInstance->SetMaxVersion(nMaxVersion);
+    SetMaxVersion(nMaxVersion);
 
     // Upgrade to HD if explicit upgrade
-    LOCK(walletInstance->cs_wallet);
+    LOCK(cs_wallet);
 
     // Do not upgrade versions to any version between HD_SPLIT and FEATURE_PRE_SPLIT_KEYPOOL unless already supporting HD_SPLIT
-    int max_version = walletInstance->GetVersion();
-    if (!walletInstance->CanSupportFeature(FEATURE_HD_SPLIT) && max_version >= FEATURE_HD_SPLIT && max_version < FEATURE_PRE_SPLIT_KEYPOOL) {
+    int max_version = GetVersion();
+    if (!CanSupportFeature(FEATURE_HD_SPLIT) && max_version >= FEATURE_HD_SPLIT && max_version < FEATURE_PRE_SPLIT_KEYPOOL) {
         out = _("Cannot upgrade a non HD split wallet without upgrading to support pre split keypool. Please use -upgradewallet=169900 or -upgradewallet with no version specified.");
         return false;
     }
 
     bool hd_upgrade = false;
     bool split_upgrade = false;
-    if (walletInstance->CanSupportFeature(FEATURE_HD) && !walletInstance->IsHDEnabled()) {
-        walletInstance->WalletLogPrintf("Upgrading wallet to HD\n");
-        walletInstance->SetMinVersion(FEATURE_HD);
+    if (CanSupportFeature(FEATURE_HD) && !IsHDEnabled()) {
+        WalletLogPrintf("Upgrading wallet to HD\n");
+        SetMinVersion(FEATURE_HD);
 
         // generate a new master key
-        CPubKey masterPubKey = walletInstance->GenerateNewSeed();
-        walletInstance->SetHDSeed(masterPubKey);
+        CPubKey masterPubKey = GenerateNewSeed();
+        SetHDSeed(masterPubKey);
         hd_upgrade = true;
     }
     // Upgrade to HD chain split if necessary
-    if (walletInstance->CanSupportFeature(FEATURE_HD_SPLIT)) {
-        walletInstance->WalletLogPrintf("Upgrading wallet to use HD chain split\n");
-        walletInstance->SetMinVersion(FEATURE_PRE_SPLIT_KEYPOOL);
+    if (CanSupportFeature(FEATURE_HD_SPLIT)) {
+        WalletLogPrintf("Upgrading wallet to use HD chain split\n");
+        SetMinVersion(FEATURE_PRE_SPLIT_KEYPOOL);
         split_upgrade = FEATURE_HD_SPLIT > prev_version;
     }
     // Mark all keys currently in the keypool as pre-split
     if (split_upgrade) {
-        walletInstance->MarkPreSplitKeys();
+        MarkPreSplitKeys();
     }
     // Regenerate the keypool if upgraded to HD
     if (hd_upgrade) {
-        if (!walletInstance->TopUpKeyPool()) {
+        if (!TopUpKeyPool()) {
             out = _("Unable to generate keys");
             return false;
         }
