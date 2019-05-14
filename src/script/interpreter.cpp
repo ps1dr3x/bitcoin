@@ -998,6 +998,17 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         }
                     }
 
+                    // Check that all the provided public keys are valid
+                    int currKey = ikey;
+                    for (int k = nKeysCount; k > 0; k--)
+                    {
+                        valtype& vchPubKey = stacktop(-currKey);
+                        if (!CheckPubKeyEncoding(vchPubKey, flags, sigversion, serror)) {
+                            return false;
+                        }
+                        currKey++;
+                    }
+
                     bool fSuccess = true;
                     while (fSuccess && nSigsCount > 0)
                     {
@@ -1007,7 +1018,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         // Note how this makes the exact order of pubkey/signature evaluation
                         // distinguishable by CHECKMULTISIG NOT if the STRICTENC flag is set.
                         // See the script_(in)valid tests for details.
-                        if (!CheckSignatureEncoding(vchSig, flags, serror) || !CheckPubKeyEncoding(vchPubKey, flags, sigversion, serror)) {
+                        if (!CheckSignatureEncoding(vchSig, flags, serror)) {
                             // serror is set
                             return false;
                         }
